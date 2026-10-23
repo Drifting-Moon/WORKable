@@ -11,6 +11,7 @@ import {
   ArrowRight,
   Trash2,
   Edit3,
+  AlertTriangle,
 } from 'lucide-react';
 import { useApp } from '../store.jsx';
 import {
@@ -53,6 +54,8 @@ const useMine = () => {
 
 export function EmpHome() {
   const { db, user, jobs, apps } = useMine();
+  const { deleteAccount } = useApp();
+  const [confirmDeleteAcc, setConfirmDeleteAcc] = useState(false);
   const st = employerStatus(db, user?.id);
 
   const StatTile = ({ n, l, desc }) => (
@@ -112,12 +115,46 @@ export function EmpHome() {
           <span>Candidate pipeline ({apps.length})</span>
         </Btn>
       </div>
+
+      {/* Danger Zone: Employer Account Deletion */}
+      <Card className="p-6 border-bad/30 bg-badbg/10 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h3 className="font-display text-base font-bold text-bad flex items-center gap-2">
+            <AlertTriangle size={16} />
+            <span>Employer Account Actions</span>
+          </h3>
+          <p className="text-xs text-muted mt-1">
+            Permanently delete your employer account. All your organization's job listings, applicant submissions, and evidence will be removed.
+          </p>
+        </div>
+        <Btn
+          type="button"
+          v="danger"
+          onClick={() => setConfirmDeleteAcc(true)}
+          className="!px-4 !py-2 text-xs shrink-0"
+        >
+          <Trash2 size={14} className="mr-1" />
+          Delete Employer Account
+        </Btn>
+      </Card>
+
+      <Confirm
+        open={confirmDeleteAcc}
+        onClose={() => setConfirmDeleteAcc(false)}
+        title="Permanently delete your employer account?"
+        text="This cannot be undone. All positions, candidate application records, and facility evidence for your company will be permanently deleted."
+        yes="Delete Account"
+        onYes={async () => {
+          setConfirmDeleteAcc(false);
+          await deleteAccount();
+        }}
+      />
     </div>
   );
 }
 
 export function EmpJobs() {
-  const { user, act, notify } = useApp();
+  const { user, act, notify, deleteJobListing } = useApp();
   const { db, jobs } = useMine();
   const [del, setDel] = useState(null);
 
@@ -210,9 +247,10 @@ export function EmpJobs() {
         title="Delete this listing permanently?"
         text={`“${del?.title}” and all related applicant submissions will be permanently removed.`}
         yes="Delete listing"
-        onYes={() => {
-          act((d) => deleteJob(d, del.id, user.id));
-          notify('Job listing permanently deleted.');
+        onYes={async () => {
+          const toDelete = del;
+          setDel(null);
+          await deleteJobListing(toDelete.id);
         }}
       />
     </div>
@@ -633,8 +671,9 @@ export function Verification() {
 }
 
 export function EmpEvidence() {
-  const { db, user, addEvidence } = useApp();
+  const { db, user, addEvidence, deleteEvidenceDeclaration } = useApp();
   const [open, setOpen] = useState(false);
+  const [delEvidence, setDelEvidence] = useState(null);
   const [f, setF] = useState({
     facilityType: 'wheel',
     label: '',
@@ -686,17 +725,27 @@ export function EmpEvidence() {
               <div className="space-y-2.5">
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="font-bold text-base text-ink">{ev.label}</h3>
-                  <Badge
-                    tone={
-                      ev.status === 'Evidence Verified'
-                        ? 'ok'
-                        : ev.status === 'Pending Review'
-                        ? 'warn'
-                        : 'info'
-                    }
-                  >
-                    {ev.status}
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Badge
+                      tone={
+                        ev.status === 'Evidence Verified'
+                          ? 'ok'
+                          : ev.status === 'Pending Review'
+                          ? 'warn'
+                          : 'info'
+                      }
+                    >
+                      {ev.status}
+                    </Badge>
+                    <Btn
+                      v="ghost"
+                      onClick={() => setDelEvidence(ev)}
+                      aria-label={`Delete ${ev.label}`}
+                      className="!px-2 !py-1 text-xs text-muted hover:text-bad"
+                    >
+                      <Trash2 size={13} />
+                    </Btn>
+                  </div>
                 </div>
                 <p className="text-xs text-muted leading-relaxed">{ev.description}</p>
                 <div className="text-[11px] font-mono bg-paper p-2 rounded border border-line/60 text-ink/80 space-y-0.5">
@@ -810,6 +859,19 @@ export function EmpEvidence() {
           </div>
         </form>
       </Modal>
+
+      <Confirm
+        open={!!delEvidence}
+        onClose={() => setDelEvidence(null)}
+        title="Delete facility evidence declaration?"
+        text={`“${delEvidence?.label}” will be removed from your organization's accessibility evidence declarations.`}
+        yes="Delete evidence"
+        onYes={async () => {
+          const toDel = delEvidence;
+          setDelEvidence(null);
+          await deleteEvidenceDeclaration(toDel.id);
+        }}
+      />
     </div>
   );
 }

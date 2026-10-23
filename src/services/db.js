@@ -469,3 +469,41 @@ export function withdrawApplication(d, appId, seekerId) {
   return a;
 }
 
+export function deleteUserAccount(d, userId) {
+  const user = d.users.find((u) => u.id === userId);
+  if (!user) throw new Error('User not found.');
+  if (user.role === 'admin') throw new Error('Administrative accounts cannot be deleted.');
+
+  if (user.role === 'employer') {
+    const employerJobs = d.jobs.filter((j) => j.employerId === userId);
+    const jobIds = new Set(employerJobs.map((j) => j.id));
+    d.jobs = d.jobs.filter((j) => j.employerId !== userId);
+    d.applications = (d.applications || []).filter((a) => !jobIds.has(a.jobId));
+    d.saved = (d.saved || []).filter((s) => !jobIds.has(s.jobId));
+    d.verifications = (d.verifications || []).filter((v) => v.employerId !== userId);
+    d.evidence = (d.evidence || []).filter((e) => e.employerId !== userId);
+    d.reports = (d.reports || []).filter((r) => r.employerId !== userId);
+  }
+
+  if (user.role === 'seeker') {
+    d.applications = (d.applications || []).filter((a) => a.seekerId !== userId);
+    d.saved = (d.saved || []).filter((s) => s.seekerId !== userId);
+    d.resumes = (d.resumes || []).filter((r) => r.seekerId !== userId);
+    d.reports = (d.reports || []).filter((r) => r.reporterId !== userId);
+  }
+
+  d.users = d.users.filter((u) => u.id !== userId);
+  return true;
+}
+
+export function deleteAccessibilityEvidence(d, evidenceId, employerId) {
+  const ev = (d.evidence || []).find((e) => e.id === evidenceId);
+  if (!ev) throw new Error('Evidence record not found.');
+  if (employerId && ev.employerId !== employerId) {
+    throw new Error('You can only delete your own facility evidence declarations.');
+  }
+  d.evidence = (d.evidence || []).filter((e) => e.id !== evidenceId);
+  return true;
+}
+
+

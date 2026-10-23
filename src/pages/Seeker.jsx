@@ -1305,7 +1305,9 @@ export function MyReports() {
 }
 
 export function Profile() {
-  const { db, user, notify, saveProfile } = useApp();
+  const { db, user, notify, saveProfile, deleteAccount } = useApp();
+  const [confirmDeleteAcc, setConfirmDeleteAcc] = useState(false);
+  const [confirmResetProf, setConfirmResetProf] = useState(false);
   const p = user?.profile || {};
   const [f, setF] = useState({
     name: user?.name || '',
@@ -1332,6 +1334,36 @@ export function Profile() {
     setF({ ...f, [k]: (f[k] || []).includes(v) ? f[k].filter((x) => x !== v) : [...(f[k] || []), v] });
 
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+
+  const handleResetProfile = async () => {
+    const blank = {
+      name: f.name.trim(),
+      phone: '',
+      summary: '',
+      education: '',
+      experience: '',
+      arrangements: [],
+      accessPrefs: [],
+      resumeName: '',
+      skills: [],
+      locations: [],
+    };
+    await saveProfile(blank);
+    setF({
+      name: f.name.trim(),
+      phone: '',
+      summary: '',
+      education: '',
+      experience: '',
+      resumeName: '',
+      arrangements: [],
+      accessPrefs: [],
+      skills: '',
+      locations: '',
+    });
+    setConfirmResetProf(false);
+    notify('Profile details cleared.');
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -1439,6 +1471,58 @@ export function Profile() {
           Save Candidate Profile
         </Btn>
       </div>
+
+      {/* Danger Zone: Reset Profile or Delete Candidate Account */}
+      <Card className="p-6 md:p-8 border-bad/40 bg-badbg/10 space-y-4">
+        <div className="flex items-center gap-2 text-bad">
+          <AlertTriangle size={18} />
+          <h3 className="font-display text-lg font-bold">Profile & Account Actions</h3>
+        </div>
+        <p className="text-xs text-muted leading-relaxed">
+          Clear your candidate profile information if you want to start fresh, or permanently delete your account and all associated documents and applications.
+        </p>
+
+        <div className="flex flex-wrap items-center gap-3 pt-2">
+          <Btn
+            type="button"
+            v="ghost"
+            onClick={() => setConfirmResetProf(true)}
+            className="!px-4 !py-2 text-xs border border-line text-muted hover:text-ink"
+          >
+            Clear Profile Information
+          </Btn>
+          <Btn
+            type="button"
+            v="danger"
+            onClick={() => setConfirmDeleteAcc(true)}
+            className="!px-4 !py-2 text-xs"
+          >
+            <Trash2 size={14} className="mr-1" />
+            Delete Candidate Account
+          </Btn>
+        </div>
+      </Card>
+
+      <Confirm
+        open={confirmResetProf}
+        onClose={() => setConfirmResetProf(false)}
+        title="Clear all profile information?"
+        text="This will reset your summary, skills, education, experience, and accommodations to blank. Your account will remain active."
+        yes="Clear Profile"
+        onYes={handleResetProfile}
+      />
+
+      <Confirm
+        open={confirmDeleteAcc}
+        onClose={() => setConfirmDeleteAcc(false)}
+        title="Permanently delete your candidate account?"
+        text="This cannot be undone. All your applications, saved jobs, uploaded CVs, and profile data will be permanently deleted."
+        yes="Delete Account"
+        onYes={async () => {
+          setConfirmDeleteAcc(false);
+          await deleteAccount();
+        }}
+      />
     </form>
   );
 }

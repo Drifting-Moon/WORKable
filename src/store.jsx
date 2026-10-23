@@ -15,6 +15,8 @@ import {
   getAccessibilityTrustBadge,
   saveJob,
   deleteJob,
+  deleteUserAccount,
+  deleteAccessibilityEvidence,
 } from './services/db';
 import {
   isSupabaseConfigured,
@@ -27,19 +29,23 @@ import {
   fetchJobsSupabase,
   createJobSupabase,
   updateJobSupabase,
+  deleteJobSupabase,
   uploadResumeStorage,
   getSignedResumeUrl,
+  deleteResumeSupabase,
   submitAccessibilityReportSupabase,
   fetchAccessibilityReportsSupabase,
   updateAccessibilityReportSupabase,
   fetchEvidenceSupabase,
   submitEvidenceSupabase,
   updateEvidenceSupabase,
+  deleteAccessibilityEvidenceSupabase,
   fetchApplicationsSupabase,
   updateApplicationStatusSupabase,
   withdrawApplicationSupabase,
   fetchSavedJobsSupabase,
   toggleSavedJobSupabase,
+  deleteUserAccountSupabase,
 } from './services/supabase';
 
 const Ctx = createContext();
@@ -925,10 +931,89 @@ export function AppProvider({ children }) {
     notify('Primary resume updated.');
   };
 
-  const removeResume = (resumeId) => {
+  const removeResume = async (resumeId) => {
     if (user?.role !== 'seeker') return notify('Job Seeker access required.', true);
+    const liveAccount = isSupabaseConfigured() && user?.id && !user.email?.toLowerCase().endsWith('@workable.demo');
+    if (liveAccount) {
+      try {
+        await deleteResumeSupabase(resumeId);
+      } catch (err) {
+        notify(`Could not delete CV from cloud storage: ${err.message}`, true);
+        return false;
+      }
+    }
     act((d) => manageResume(d, user.id, 'delete', { resumeId }));
     notify('Resume deleted.');
+    return true;
+  };
+
+  const deleteJobListing = async (jobId) => {
+    if (user?.role !== 'employer' && user?.role !== 'admin') {
+      return notify('Employer or admin access required.', true);
+    }
+    const liveAccount = isSupabaseConfigured() && user?.id && !user.email?.toLowerCase().endsWith('@workable.demo');
+    if (liveAccount) {
+      try {
+        await deleteJobSupabase(jobId, user.role === 'admin' ? null : user.id);
+      } catch (err) {
+        notify(`Could not delete listing from cloud: ${err.message}`, true);
+        return false;
+      }
+    }
+    act((d) => deleteJob(d, jobId, user.role === 'admin' ? (d.jobs.find((j) => j.id === jobId)?.employerId || user.id) : user.id));
+    notify('Job listing permanently deleted.');
+    return true;
+  };
+
+  const deleteEvidenceDeclaration = async (evidenceId) => {
+    if (user?.role !== 'employer' && user?.role !== 'admin') {
+      return notify('Employer or admin access required.', true);
+    }
+    const liveAccount = isSupabaseConfigured() && user?.id && !user.email?.toLowerCase().endsWith('@workable.demo');
+    if (liveAccount) {
+      try {
+        await deleteAccessibilityEvidenceSupabase(evidenceId);
+      } catch (err) {
+        notify(`Could not delete facility evidence from cloud: ${err.message}`, true);
+        return false;
+      }
+    }
+    act((d) => deleteAccessibilityEvidence(d, evidenceId, user.role === 'admin' ? null : user.id));
+    notify('Facility evidence declaration deleted.');
+    return true;
+  };
+
+  const deleteAccount = async (targetUserId = null) => {
+    const uidToDelete = targetUserId || user?.id;
+    if (!uidToDelete) return notify('No account to delete.', true);
+    const isSelf = !targetUserId || targetUserId === user?.id;
+    if (isSelf && user?.role === 'admin') return notify('Administrator accounts cannot be deleted.', true);
+
+    const targetUser = db.users.find((u) => u.id === uidToDelete);
+    if (!targetUser) return notify('Account not found.', true);
+    if (targetUser.role === 'admin') return notify('Administrator accounts cannot be deleted.', true);
+
+    const liveAccount = isSupabaseConfigured() && uidToDelete && !targetUser.email?.toLowerCase().endsWith('@workable.demo');
+    if (liveAccount) {
+      try {
+        await deleteUserAccountSupabase(uidToDelete);
+      } catch (err) {
+        notify(`Could not delete cloud account: ${err.message}`, true);
+        return false;
+      }
+    }
+
+    act((d) => deleteUserAccount(d, uidToDelete));
+
+    if (isSelf) {
+      localStorage.removeItem('workable_session');
+      setRealUser(null);
+      setUid(null);
+      notify('Your account and profile have been permanently deleted.');
+    } else {
+      notify(`Account for ${targetUser.name} has been permanently deleted.`);
+    }
+    return true;
   };
 
   const withdrawApp = async (appId) => {
@@ -1080,6 +1165,9 @@ export function AppProvider({ children }) {
         toggleUserSuspension,
         getTrustBadge,
         saveRealJob,
+        deleteJobListing,
+        deleteEvidenceDeclaration,
+        deleteAccount,
         resetDemo,
         isSupabase: isSupabaseConfigured(),
         authLoading,

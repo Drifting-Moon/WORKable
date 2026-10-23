@@ -349,5 +349,51 @@ describe('TC44–TC50: Accessibility Accountability, Evidence Audits, and Resume
     const withdrawn = S.withdrawApplication(d, app.id, 'u_s1');
     expect(withdrawn.status).toBe('Withdrawn');
   });
+
+  it('TC50: deletes candidate account with cascade cleanup of applications, saved jobs, and CVs', () => {
+    expect(d.users.some((u) => u.id === 'u_s1')).toBe(true);
+    expect(d.applications.some((a) => a.seekerId === 'u_s1')).toBe(true);
+    expect(d.saved.some((s) => s.seekerId === 'u_s1')).toBe(true);
+
+    S.deleteUserAccount(d, 'u_s1');
+
+    expect(d.users.some((u) => u.id === 'u_s1')).toBe(false);
+    expect(d.applications.some((a) => a.seekerId === 'u_s1')).toBe(false);
+    expect(d.saved.some((s) => s.seekerId === 'u_s1')).toBe(false);
+    expect(d.resumes.some((r) => r.seekerId === 'u_s1')).toBe(false);
+  });
+
+  it('TC51: deletes employer account with cascade cleanup of jobs and applicants', () => {
+    expect(d.users.some((u) => u.id === 'u_e1')).toBe(true);
+    expect(d.jobs.some((j) => j.employerId === 'u_e1')).toBe(true);
+
+    S.deleteUserAccount(d, 'u_e1');
+
+    expect(d.users.some((u) => u.id === 'u_e1')).toBe(false);
+    expect(d.jobs.some((j) => j.employerId === 'u_e1')).toBe(false);
+  });
+
+  it('TC52: forbids deleting administrator accounts', () => {
+    expect(() => S.deleteUserAccount(d, 'u_admin')).toThrow(/administrative accounts cannot be deleted/i);
+    expect(d.users.some((u) => u.id === 'u_admin')).toBe(true);
+  });
+
+  it('TC53: deletes facility evidence declaration with permission validation', () => {
+    const ev = S.submitAccessibilityEvidence(d, 'u_e2', {
+      facilityType: 'wheel',
+      label: 'Temporary Ramp Access',
+      description: 'Temporary ramp installed during construction on ground floor entrance.',
+      evidenceType: 'Architectural Photo',
+    });
+    expect(d.evidence.some((e) => e.id === ev.id)).toBe(true);
+
+    // Block non-owning employer
+    expect(() => S.deleteAccessibilityEvidence(d, ev.id, 'u_e1')).toThrow(/only delete your own/i);
+
+    // Allow owning employer
+    S.deleteAccessibilityEvidence(d, ev.id, 'u_e2');
+    expect(d.evidence.some((e) => e.id === ev.id)).toBe(false);
+  });
 });
+
 

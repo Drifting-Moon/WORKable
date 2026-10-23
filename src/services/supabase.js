@@ -535,4 +535,60 @@ export async function toggleSavedJobSupabase(seekerId, jobId) {
   }
 }
 
+/* ====================================================================
+ * Job Deletion (Real PostgreSQL)
+ * ==================================================================== */
+
+export async function deleteJobSupabase(jobId, employerId) {
+  if (!supabase || !jobId) throw new Error('A valid Job ID is required.');
+  let query = supabase.from('jobs').delete().eq('id', jobId);
+  if (employerId) {
+    query = query.eq('employer_id', employerId);
+  }
+  const { error } = await query;
+  if (error) throw error;
+  return true;
+}
+
+/* ====================================================================
+ * Facility Evidence Deletion (Real PostgreSQL)
+ * ==================================================================== */
+
+export async function deleteAccessibilityEvidenceSupabase(evidenceId) {
+  if (!supabase || !evidenceId) throw new Error('A valid Evidence ID is required.');
+  const { error } = await supabase.from('accessibility_evidence').delete().eq('id', evidenceId);
+  if (error) throw error;
+  return true;
+}
+
+/* ====================================================================
+ * User Account & Profile Deletion (Real PostgreSQL)
+ * ==================================================================== */
+
+export async function deleteUserAccountSupabase(userId) {
+  if (!supabase || !userId) throw new Error('A valid User ID is required.');
+
+  // 1. If seeker, remove files from storage bucket 'resumes'
+  try {
+    const { data: resumes } = await supabase.from('resumes').select('storage_path').eq('seeker_id', userId);
+    if (resumes && resumes.length > 0) {
+      const paths = resumes.map((r) => r.storage_path).filter(Boolean);
+      if (paths.length > 0) {
+        await supabase.storage.from('resumes').remove(paths);
+      }
+    }
+  } catch (err) {
+    console.warn('Storage cleanup non-critical error:', err);
+  }
+
+  // 2. Delete profile row (Postgres cascade rules delete jobs, applications, saved_jobs, resumes)
+  const { error: profileError } = await supabase.from('profiles').delete().eq('id', userId);
+  if (profileError) throw profileError;
+
+  // 3. Sign out of session
+  await supabase.auth.signOut().catch(() => {});
+  return true;
+}
+
+
 

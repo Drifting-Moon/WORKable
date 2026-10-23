@@ -37,11 +37,13 @@ import {
 import { addTag, companyOf, removeTag, reviewVerification, setSuspended } from '../services/db';
 
 export function Admin() {
-  const { db, act, notify, resetDemo, updateCase, evaluateEvidence, toggleUserSuspension } = useApp();
+  const { db, act, notify, resetDemo, updateCase, evaluateEvidence, toggleUserSuspension, deleteAccount, deleteJobListing } = useApp();
   const [tab, setTab] = useState('disputes');
   const [reason, setReason] = useState({});
   const [tag, setTag] = useState('');
   const [rm, setRm] = useState(null);
+  const [delUser, setDelUser] = useState(null);
+  const [delAdminJob, setDelAdminJob] = useState(null);
   const [resetConfirm, setResetConfirm] = useState(false);
 
   // Dispute moderation state
@@ -654,14 +656,24 @@ export function Admin() {
               </div>
 
               {u.role !== 'admin' && (
-                <Btn
-                  v="ghost"
-                  aria-label={`${u.suspended ? 'Reactivate' : 'Suspend'} ${u.name}`}
-                  onClick={() => toggleUserSuspension(u.id, !u.suspended)}
-                  className="!px-3 !py-1 text-xs"
-                >
-                  {u.suspended ? 'Reactivate account' : 'Suspend account'}
-                </Btn>
+                <div className="flex items-center gap-2">
+                  <Btn
+                    v="ghost"
+                    aria-label={`${u.suspended ? 'Reactivate' : 'Suspend'} ${u.name}`}
+                    onClick={() => toggleUserSuspension(u.id, !u.suspended)}
+                    className="!px-3 !py-1 text-xs"
+                  >
+                    {u.suspended ? 'Reactivate account' : 'Suspend account'}
+                  </Btn>
+                  <Btn
+                    v="danger"
+                    aria-label={`Delete account ${u.name}`}
+                    onClick={() => setDelUser(u)}
+                    className="!px-2.5 !py-1 text-xs"
+                  >
+                    Delete
+                  </Btn>
+                </div>
               )}
             </Card>
           ))}
@@ -682,7 +694,17 @@ export function Admin() {
                   {companyOf(db, j.employerId)} · {j.location} · {j.arrangement}
                 </p>
               </div>
-              <Badge tone={j.active ? 'ok' : 'warn'}>{j.active ? 'Active' : 'Inactive / Held'}</Badge>
+              <div className="flex items-center gap-2">
+                <Badge tone={j.active ? 'ok' : 'warn'}>{j.active ? 'Active' : 'Inactive / Held'}</Badge>
+                <Btn
+                  v="danger"
+                  aria-label={`Delete listing ${j.title}`}
+                  onClick={() => setDelAdminJob(j)}
+                  className="!px-2.5 !py-1 text-xs"
+                >
+                  Delete
+                </Btn>
+              </div>
             </Card>
           ))}
         </div>
@@ -747,6 +769,32 @@ export function Admin() {
         onYes={() => {
           act((d) => removeTag(d, rm.id));
           notify('Tag removed from taxonomy.');
+        }}
+      />
+
+      <Confirm
+        open={!!delUser}
+        onClose={() => setDelUser(null)}
+        title="Permanently delete user account?"
+        text={`Are you sure you want to delete ${delUser?.name}'s account (${delUser?.email})? All associated records will be permanently removed.`}
+        yes="Delete User"
+        onYes={async () => {
+          const toDel = delUser;
+          setDelUser(null);
+          await deleteAccount(toDel.id);
+        }}
+      />
+
+      <Confirm
+        open={!!delAdminJob}
+        onClose={() => setDelAdminJob(null)}
+        title="Permanently remove job listing?"
+        text={`“${delAdminJob?.title}” and all related applications will be deleted from the platform.`}
+        yes="Delete Listing"
+        onYes={async () => {
+          const toDel = delAdminJob;
+          setDelAdminJob(null);
+          await deleteJobListing(toDel.id);
         }}
       />
     </div>
