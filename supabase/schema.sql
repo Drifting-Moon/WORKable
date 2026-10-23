@@ -820,3 +820,57 @@ $$;
 drop trigger if exists guard_application_update on public.applications;
 create trigger guard_application_update before update on public.applications
 for each row execute procedure public.guard_application_update();
+
+-- ====================================================================
+-- USER PURGE & DELETION FUNCTIONS (SECURITY DEFINER)
+-- ====================================================================
+
+-- Function to allow users to permanently delete their own account from auth.users
+create or replace function public.delete_own_user()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+begin
+  if current_user_id is null then
+    raise exception 'Authentication required to delete own account.';
+  end if;
+
+  -- Delete from auth.users. Foreign keys with 'on delete cascade' will
+  -- automatically clean up public.profiles, applications, saved_jobs, etc.
+  delete from auth.users where id = current_user_id;
+end;
+$$;
+
+grant execute on function public.delete_own_user() to authenticated;
+
+-- Function to allow site administrators to delete other user accounts
+create or replace function public.admin_delete_user(target_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if target_user_id is null then
+    raise exception 'Target user ID is required.';
+  end if;
+
+  if not exists (
+    select 1 from public.profiles where id = auth.uid() and role = 'admin'
+  ) and not (
+    coalesce(auth.jwt()->'app_metadata'->>'role', '') = 'admin' or
+    coalesce(auth.jwt()->'user_metadata'->>'role', '') = 'admin'
+  ) then
+    raise exception 'Unauthorized: Only administrators can delete user accounts.';
+  end if;
+
+  delete from auth.users where id = target_user_id;
+end;
+$$;
+
+grant execute on function public.admin_delete_user(uuid) to authenticated;
+

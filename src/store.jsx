@@ -46,6 +46,7 @@ import {
   fetchSavedJobsSupabase,
   toggleSavedJobSupabase,
   deleteUserAccountSupabase,
+  purgeDeletedAuthUserSupabase,
 } from './services/supabase';
 
 const Ctx = createContext();
@@ -149,10 +150,40 @@ export function AppProvider({ children }) {
       if (session?.user && !isDemoSession) {
         const su = session.user;
         const prof = await fetchUserProfile(su.id);
+
+        // Account was deleted: purge auth session and reject
+        if (!prof) {
+          try {
+            await purgeDeletedAuthUserSupabase();
+            await signOutWithSupabase();
+          } catch {
+            /* ignore */
+          }
+          localStorage.removeItem('workable_session');
+          setRealUser(null);
+          setUid(null);
+          setAuthLoading(false);
+          return;
+        }
+
+        // Account was suspended: reject
+        if (prof.suspended) {
+          try {
+            await signOutWithSupabase();
+          } catch {
+            /* ignore */
+          }
+          localStorage.removeItem('workable_session');
+          setRealUser(null);
+          setUid(null);
+          setAuthLoading(false);
+          return;
+        }
+
         const fullUser = buildFullUser(su, prof);
 
-        // Sync missing profile or role back to Supabase profiles table
-        if (supabase && (!prof || prof.role !== fullUser.role)) {
+        // Sync role back to Supabase profiles table if it drifted
+        if (supabase && prof.role !== fullUser.role) {
           try {
             await supabase.from('profiles').upsert({
               id: su.id,
@@ -584,10 +615,38 @@ export function AppProvider({ children }) {
       const data = await signInWithSupabase(cleanEmail, pw);
       const su = data.user;
       const prof = await fetchUserProfile(su.id);
+
+      // Account was deleted: prevent resurrection, clean up orphan session and reject
+      if (!prof) {
+        try {
+          await purgeDeletedAuthUserSupabase();
+          await signOutWithSupabase();
+        } catch {
+          /* ignore */
+        }
+        localStorage.removeItem('workable_session');
+        setRealUser(null);
+        setUid(null);
+        throw new Error('This account has been deleted. If you would like to use WorkAble, please sign up for a new account.');
+      }
+
+      // Account was suspended
+      if (prof.suspended) {
+        try {
+          await signOutWithSupabase();
+        } catch {
+          /* ignore */
+        }
+        localStorage.removeItem('workable_session');
+        setRealUser(null);
+        setUid(null);
+        throw new Error('This account has been suspended. Please contact an administrator.');
+      }
+
       const fullUser = buildFullUser(su, prof);
 
-      // Ensure Supabase profiles table has the role matching user_metadata/profile
-      if (supabase && (!prof || prof.role !== fullUser.role)) {
+      // Ensure Supabase profiles table has the role matching user_metadata/profile if it drifted
+      if (supabase && prof.role !== fullUser.role) {
         try {
           await supabase.from('profiles').upsert({
             id: su.id,
@@ -637,6 +696,32 @@ export function AppProvider({ children }) {
         const data = await signInWithSupabase(cleanEmail, pw);
         const su = data.user;
         const prof = await fetchUserProfile(su.id);
+
+        if (!prof) {
+          try {
+            await purgeDeletedAuthUserSupabase();
+            await signOutWithSupabase();
+          } catch {
+            /* ignore */
+          }
+          localStorage.removeItem('workable_session');
+          setRealUser(null);
+          setUid(null);
+          throw new Error('This account has been deleted. If you would like to use WorkAble, please sign up for a new account.');
+        }
+
+        if (prof.suspended) {
+          try {
+            await signOutWithSupabase();
+          } catch {
+            /* ignore */
+          }
+          localStorage.removeItem('workable_session');
+          setRealUser(null);
+          setUid(null);
+          throw new Error('This account has been suspended. Please contact an administrator.');
+        }
+
         const fullUser = buildFullUser(su, prof);
         setDb((prev) => {
           const idx = prev.users.findIndex((x) => x.id === fullUser.id);
@@ -1052,6 +1137,13 @@ export function AppProvider({ children }) {
     act((d) => deleteUserAccount(d, uidToDelete));
 
     if (isSelf) {
+      if (isSupabaseConfigured()) {
+        try {
+          await signOutWithSupabase();
+        } catch {
+          /* ignore */
+        }
+      }
       localStorage.removeItem('workable_session');
       setRealUser(null);
       setUid(null);

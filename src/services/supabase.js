@@ -581,13 +581,40 @@ export async function deleteUserAccountSupabase(userId) {
     console.warn('Storage cleanup non-critical error:', err);
   }
 
-  // 2. Delete profile row (Postgres cascade rules delete jobs, applications, saved_jobs, resumes)
-  const { error: profileError } = await supabase.from('profiles').delete().eq('id', userId);
-  if (profileError) throw profileError;
+  // 2. Try to purge user permanently from auth.users via SECURITY DEFINER PostgreSQL functions
+  let rpcSucceeded = false;
+  try {
+    const { data: authSession } = await supabase.auth.getUser();
+    const currentAuthId = authSession?.user?.id;
+    if (currentAuthId === userId) {
+      const { error: rpcErr } = await supabase.rpc('delete_own_user');
+      if (!rpcErr) rpcSucceeded = true;
+    } else {
+      const { error: rpcErr } = await supabase.rpc('admin_delete_user', { target_user_id: userId });
+      if (!rpcErr) rpcSucceeded = true;
+    }
+  } catch (err) {
+    console.warn('RPC auth.users deletion notice (fallback to profiles deletion):', err);
+  }
 
-  // 3. Sign out of session
+  // 3. Fallback/Explicit: Delete profile row (Postgres cascade rules delete jobs, applications, saved_jobs, resumes)
+  if (!rpcSucceeded) {
+    const { error: profileError } = await supabase.from('profiles').delete().eq('id', userId);
+    if (profileError) throw profileError;
+  }
+
+  // 4. Force full sign out of session
   await supabase.auth.signOut().catch(() => {});
   return true;
+}
+
+export async function purgeDeletedAuthUserSupabase() {
+  if (!supabase) return;
+  try {
+    await supabase.rpc('delete_own_user');
+  } catch {
+    /* ignore if rpc not installed yet */
+  }
 }
 
 
