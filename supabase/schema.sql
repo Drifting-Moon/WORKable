@@ -248,6 +248,18 @@ create policy "Users can update their own profile"
   using (auth.uid() = id)
   with check (auth.uid() = id);
 
+drop policy if exists "Users can delete their own profile" on public.profiles;
+create policy "Users can delete their own profile"
+  on public.profiles for delete
+  to authenticated
+  using (auth.uid() = id);
+
+drop policy if exists "Admins can delete any profile" on public.profiles;
+create policy "Admins can delete any profile"
+  on public.profiles for delete
+  to authenticated
+  using (public.workable_is_admin());
+
 -- Never trust role values supplied in sign-up metadata. Public registration can
 -- create only seekers or employers; admin accounts must be provisioned by an
 -- existing trusted administrator / database operator.
