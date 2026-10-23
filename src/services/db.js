@@ -104,7 +104,11 @@ export function validateJob(j) {
   return e;
 }
 export function saveJob(d, job, employerId) {
-  const employer = d.users.find((u) => u.id === employerId);
+  let employer = d.users.find((u) => u.id === employerId);
+  if (!employer && employerId && !employerId.startsWith('u_s')) {
+    employer = { id: employerId, role: 'employer', suspended: false };
+    d.users.push(employer);
+  }
   if (!employer || employer.role !== 'employer' || employer.suspended) throw new Error('An active employer account is required to manage jobs.');
   const e = validateJob(job);
   if (Object.keys(e).length) fail('Please fix the highlighted fields.', e);

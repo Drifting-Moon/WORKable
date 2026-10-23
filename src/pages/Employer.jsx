@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ShieldCheck,
@@ -276,14 +276,16 @@ export function JobForm() {
           location: '',
           type: 'Full-time',
           arrangement: 'Hybrid',
-          salaryMin: '',
-          salaryMax: '',
+          salaryMin: '8',
+          salaryMax: '12',
           skills: '',
-          tags: [],
+          tags: ['remote', 'flex'],
           qual: '',
         }
   );
   const [errs, setErrs] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const formRef = useRef(null);
 
   if (id && !old) {
     return (
@@ -298,7 +300,7 @@ export function JobForm() {
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const job = () => ({
     ...f,
-    skills: f.skills
+    skills: (f.skills || '')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
@@ -306,13 +308,31 @@ export function JobForm() {
 
   const submit = async (e) => {
     e.preventDefault();
-    const v = validateJob(job());
-    setErrs(v);
-    if (Object.keys(v).length) return notify('Please resolve the highlighted fields.', true);
-    const ok = await saveRealJob(job());
-    if (ok) {
-      notify(old ? 'Job listing updated.' : 'Job listing published to live database.');
-      nav('/employer/jobs');
+    setErrs({});
+    const currentJob = job();
+    const v = validateJob(currentJob);
+    if (Object.keys(v).length) {
+      setErrs(v);
+      notify('Please resolve highlighted fields before publishing.', true);
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const ok = await saveRealJob(currentJob);
+      if (ok) {
+        notify(old ? 'Job listing updated.' : 'Job listing published successfully!');
+        nav('/employer/jobs');
+      } else {
+        setErrs({ form: 'Could not publish job listing. Please check your employer permissions.' });
+        notify('Could not save job.', true);
+      }
+    } catch (err) {
+      setErrs({ form: err.message || 'Failed to publish job.' });
+      notify(err.message || 'Failed to publish job.', true);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -331,10 +351,25 @@ export function JobForm() {
   );
 
   return (
-    <form onSubmit={submit} noValidate className="mx-auto max-w-3xl space-y-6">
+    <form ref={formRef} onSubmit={submit} noValidate className="mx-auto max-w-3xl space-y-6">
       <Title sub="Specify transparent role expectations and confirmed workplace accommodations.">
         {old ? 'Edit Job Listing' : 'Publish New Opportunity'}
       </Title>
+
+      {/* Prominent Validation & Submission Error Banner */}
+      {Object.keys(errs).length > 0 && (
+        <div role="alert" className="rounded-xl border border-bad/30 bg-badbg/50 p-4 text-xs font-semibold text-bad space-y-1">
+          <p className="font-bold flex items-center gap-1.5">
+            <AlertTriangle size={15} />
+            <span>Please complete the required fields to publish:</span>
+          </p>
+          <ul className="list-disc list-inside space-y-0.5 text-[11px] font-normal">
+            {Object.entries(errs).map(([k, msg]) => (
+              <li key={k}>{msg}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <Card className="space-y-4 p-6 md:p-8">
         <h2 className="font-display text-xl font-bold text-ink">Core Specifications</h2>
@@ -354,7 +389,7 @@ export function JobForm() {
           )}
         </Field>
         <Field label="Required Skills" hint="Comma-separated list (e.g. React, TypeScript, WCAG)" error={errs.skills}>
-          {(p) => <input {...p} className={inp} value={f.skills} onChange={set('skills')} />}
+          {(p) => <input {...p} className={inp} value={f.skills} onChange={set('skills')} placeholder="e.g. React, TypeScript, WCAG" />}
         </Field>
         <Field label="Minimum Qualifications & Experience">
           {(p) => <input {...p} className={inp} value={f.qual} onChange={set('qual')} placeholder="e.g. 2+ years of web development" />}
@@ -405,8 +440,8 @@ export function JobForm() {
       </Card>
 
       <div className="flex gap-3">
-        <Btn type="submit" className="!px-6 !py-2.5">
-          {old ? 'Save changes' : 'Publish job'}
+        <Btn type="submit" disabled={submitting} className="!px-6 !py-2.5">
+          {submitting ? 'Publishing...' : old ? 'Save changes' : 'Publish job'}
         </Btn>
         <Btn v="ghost" as={Link} to="/employer/jobs" className="!px-5 !py-2.5">
           Cancel

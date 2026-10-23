@@ -1123,33 +1123,80 @@ export function AppProvider({ children }) {
   const saveRealJob = async (jobData) => {
     const liveAccount = isSupabaseConfigured() && user?.id && !user.email?.toLowerCase().endsWith('@workable.demo');
     if (liveAccount) {
-      const payload = {
-        employer_id: user.id,
-        title: jobData.title.trim(), desc: jobData.desc.trim(), location: jobData.location.trim(),
-        type: jobData.type, arrangement: jobData.arrangement,
-        salary_min: parseInt(jobData.salaryMin, 10) || 0,
-        salary_max: parseInt(jobData.salaryMax, 10) || 0,
-        skills: jobData.skills || [], tags: jobData.tags || [], resp: jobData.resp || [],
-        qual: jobData.qual || '', active: jobData.active !== false,
-        status: jobData.status || 'Published',
-      };
-      const row = jobData.id ? await updateJobSupabase(jobData.id, payload) : await createJobSupabase(payload);
-      const mapped = {
-        id: row.id, employerId: row.employer_id, companyId: row.company_id,
-        title: row.title, desc: row.desc, location: row.location, type: row.type,
-        arrangement: row.arrangement, salaryMin: row.salary_min, salaryMax: row.salary_max,
-        skills: row.skills || [], tags: row.tags || [], resp: row.resp || [], qual: row.qual || '',
-        active: row.active !== false, status: row.status || 'Published', postedAt: row.posted_at,
-      };
-      setDb((prev) => {
-        const exists = prev.jobs.some((job) => job.id === mapped.id);
-        const next = { ...prev, jobs: exists
-          ? prev.jobs.map((job) => job.id === mapped.id ? mapped : job)
-          : [mapped, ...prev.jobs] };
-        save(next);
-        return next;
-      });
-      return mapped;
+      try {
+        // Ensure employer profile exists in public.profiles so foreign key and RLS pass
+        if (supabase) {
+          try {
+            await supabase.from('profiles').upsert({
+              id: user.id,
+              name: user.name || 'Employer',
+              email: user.email,
+              role: 'employer',
+              company: user.company || 'Company',
+              updated_at: new Date().toISOString(),
+            });
+          } catch {
+            /* ignore */
+          }
+        }
+
+        const payload = {
+          employer_id: user.id,
+          title: jobData.title.trim(),
+          desc: jobData.desc.trim(),
+          location: jobData.location.trim(),
+          type: jobData.type,
+          arrangement: jobData.arrangement,
+          salary_min: parseInt(jobData.salaryMin, 10) || 0,
+          salary_max: parseInt(jobData.salaryMax, 10) || 0,
+          skills: jobData.skills || [],
+          tags: jobData.tags || [],
+          resp: jobData.resp || [],
+          qual: jobData.qual || '',
+          active: jobData.active !== false,
+          status: jobData.status || 'Published',
+        };
+        const row = jobData.id ? await updateJobSupabase(jobData.id, payload) : await createJobSupabase(payload);
+        const mapped = {
+          id: row.id,
+          employerId: row.employer_id,
+          companyId: row.company_id,
+          title: row.title,
+          desc: row.desc,
+          location: row.location,
+          type: row.type,
+          arrangement: row.arrangement,
+          salaryMin: row.salary_min,
+          salaryMax: row.salary_max,
+          skills: row.skills || [],
+          tags: row.tags || [],
+          resp: row.resp || [],
+          qual: row.qual || '',
+          active: row.active !== false,
+          status: row.status || 'Published',
+          postedAt: row.posted_at,
+        };
+        setDb((prev) => {
+          const exists = prev.jobs.some((job) => job.id === mapped.id);
+          const next = {
+            ...prev,
+            jobs: exists
+              ? prev.jobs.map((job) => (job.id === mapped.id ? mapped : job))
+              : [mapped, ...prev.jobs],
+          };
+          save(next);
+          return next;
+        });
+        return mapped;
+      } catch (err) {
+        console.warn('Live Supabase job creation failed, falling back to local storage:', err);
+        const localSaved = act((d) => saveJob(d, jobData, user.id));
+        if (localSaved) {
+          notify('Saved listing locally (cloud: ' + (err.message || 'offline') + ')');
+          return localSaved;
+        }
+        throw err;
+      }
     }
     return act((d) => saveJob(d, jobData, user.id));
   };

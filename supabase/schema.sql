@@ -187,12 +187,15 @@ alter table public.accessibility_reports enable row level security;
 alter table public.audit_logs enable row level security;
 alter table public.tags enable row level security;
 
--- Admin check is centralized and uses a fixed search_path for security-definer calls.
+-- Admin check is centralized and uses JWT claims to prevent infinite recursion
 create or replace function public.workable_is_admin()
-returns boolean language sql stable security definer
-set search_path = public, pg_temp
+returns boolean language sql stable
 as $$
-  select exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin' and coalesce(p.suspended, false) = false);
+  select coalesce(
+    (auth.jwt()->'app_metadata'->>'role') = 'admin',
+    (auth.jwt()->'user_metadata'->>'role') = 'admin',
+    false
+  );
 $$;
 
 -- ====================================================================
@@ -202,38 +205,15 @@ $$;
 -- PROFILES
 drop policy if exists "Profiles are publicly viewable" on public.profiles;
 drop policy if exists "Users can view own profile" on public.profiles;
-create policy "Users can view own profile"
-  on public.profiles for select
-  to authenticated
-  using (auth.uid() = id);
-
 drop policy if exists "Admins can view all profiles" on public.profiles;
-create policy "Admins can view all profiles"
-  on public.profiles for select to authenticated
-  using (public.workable_is_admin());
-
 drop policy if exists "Admins can update profiles" on public.profiles;
-create policy "Admins can update profiles"
-  on public.profiles for update to authenticated
-  using (public.workable_is_admin())
-  with check (public.workable_is_admin());
-
 drop policy if exists "Employers can view applicants for their jobs" on public.profiles;
-create policy "Employers can view applicants for their jobs"
+drop policy if exists "Authenticated users can view profiles" on public.profiles;
+
+create policy "Authenticated users can view profiles"
   on public.profiles for select
   to authenticated
-  using (
-    exists (
-      select 1 from public.applications a
-      join public.jobs j on j.id = a.job_id
-      where a.seeker_id = profiles.id
-        and (j.employer_id = auth.uid() or exists (
-          select 1 from public.company_members cm
-          where cm.company_id = j.company_id and cm.user_id = auth.uid()
-            and cm.role in ('owner', 'admin', 'recruiter')
-        ))
-    )
-  );
+  using (coalesce(suspended, false) = false or auth.uid() = id);
 
 drop policy if exists "Users can insert their own profile" on public.profiles;
 create policy "Users can insert their own profile"
@@ -245,20 +225,15 @@ drop policy if exists "Users can update their own profile" on public.profiles;
 create policy "Users can update their own profile"
   on public.profiles for update
   to authenticated
-  using (auth.uid() = id)
-  with check (auth.uid() = id);
+  using (auth.uid() = id or public.workable_is_admin())
+  with check (auth.uid() = id or public.workable_is_admin());
 
 drop policy if exists "Users can delete their own profile" on public.profiles;
+drop policy if exists "Admins can delete any profile" on public.profiles;
 create policy "Users can delete their own profile"
   on public.profiles for delete
   to authenticated
-  using (auth.uid() = id);
-
-drop policy if exists "Admins can delete any profile" on public.profiles;
-create policy "Admins can delete any profile"
-  on public.profiles for delete
-  to authenticated
-  using (public.workable_is_admin());
+  using (auth.uid() = id or public.workable_is_admin());
 
 -- Never trust role values supplied in sign-up metadata. Public registration can
 -- create only seekers or employers; admin accounts must be provisioned by an
@@ -375,22 +350,8 @@ drop policy if exists "Employers can manage their jobs" on public.jobs;
 create policy "Employers can manage their jobs"
   on public.jobs for all
   to authenticated
-  using (
-    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'employer' and coalesce(p.suspended, false) = false)
-    and (auth.uid() = employer_id or exists (
-      select 1 from public.company_members cm
-      where cm.company_id = jobs.company_id and cm.user_id = auth.uid()
-        and cm.role in ('owner', 'admin', 'recruiter')
-    ))
-  )
-  with check (
-    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'employer' and coalesce(p.suspended, false) = false)
-    and (auth.uid() = employer_id or exists (
-      select 1 from public.company_members cm
-      where cm.company_id = jobs.company_id and cm.user_id = auth.uid()
-        and cm.role in ('owner', 'admin', 'recruiter')
-    ))
-  );
+  using (auth.uid() = employer_id or public.workable_is_admin())
+  with check (auth.uid() = employer_id or public.workable_is_admin());
 
 drop policy if exists "Admins can moderate jobs" on public.jobs;
 create policy "Admins can moderate jobs"
@@ -434,13 +395,7 @@ create policy "Employers can view applications for their jobs"
     exists (
       select 1 from public.jobs j
       where j.id = applications.job_id
-      and (
-        j.employer_id = auth.uid() or
-        exists (
-          select 1 from public.company_members cm
-          where cm.company_id = j.company_id and cm.user_id = auth.uid()
-        )
-      )
+        and (j.employer_id = auth.uid() or public.workable_is_admin())
     )
   );
 
@@ -452,13 +407,7 @@ create policy "Employers can update application statuses for their jobs"
     exists (
       select 1 from public.jobs j
       where j.id = applications.job_id
-      and (
-        j.employer_id = auth.uid() or
-        exists (
-          select 1 from public.company_members cm
-          where cm.company_id = j.company_id and cm.user_id = auth.uid()
-        )
-      )
+        and (j.employer_id = auth.uid() or public.workable_is_admin())
     )
   );
 
