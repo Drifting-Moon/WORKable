@@ -7,8 +7,8 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "vitest run src/services/db.test.js",
-    "test:watch": "vitest src/services/db.test.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "check": "npm run test && npm run build"
   },
   "dependencies": {

@@ -74,7 +74,7 @@ export function JobsPage() {
     sort: sp.get('sort') || 'new',
   };
 
-  const skills = user?.role === 'seeker' ? user.profile.skills : [];
+  const skills = user?.role === 'seeker' ? (user?.profile?.skills || []) : [];
 
   const set = (k, v) => {
     const n = new URLSearchParams(sp);
@@ -426,10 +426,10 @@ export function JobDetail() {
   }
 
   const seeker = user?.role === 'seeker';
-  const applied = seeker && db.applications.find((a) => a.seekerId === user.id && a.jobId === j.id);
-  const saved = seeker && db.saved.some((s) => s.seekerId === user.id && s.jobId === j.id);
-  const m = seeker ? matchJob(user.profile.skills, j) : null;
-  const tags = j.tags.map((t) => db.tags.find((x) => x.id === t)?.label).filter(Boolean);
+  const applied = seeker && (db.applications || []).find((a) => a.seekerId === user?.id && a.jobId === j.id);
+  const saved = seeker && (db.saved || []).some((s) => s.seekerId === user?.id && s.jobId === j.id);
+  const m = seeker ? matchJob(user?.profile?.skills || [], j) : null;
+  const tags = (j.tags || []).map((t) => (db.tags || []).find((x) => x.id === t)?.label).filter(Boolean);
   const verified = employerStatus(db, j.employerId) === 'Verified';
   const trust = getAccessibilityTrustBadge(db, j.id);
   const verifiedEvidence = (db.evidence || []).filter(
@@ -441,7 +441,7 @@ export function JobDetail() {
     if (!user) return nav('/login');
     if (!seeker) return notify('Only registered Job Seekers can submit applications.', true);
     setStep(1);
-    const prim = myResumes.find((r) => r.isPrimary)?.fileName || myResumes[0]?.fileName || user?.profile.resumeName || '';
+    const prim = myResumes.find((r) => r.isPrimary)?.fileName || myResumes[0]?.fileName || user?.profile?.resumeName || '';
     setSelectedResume(prim);
     setOpen(true);
   };
@@ -464,7 +464,7 @@ export function JobDetail() {
       }
     }
     const a = act((d) => {
-      const created = applyToJob(d, user.id, j.id, { cover, resume: selectedResume || user.profile.resumeName });
+      const created = applyToJob(d, user.id, j.id, { cover, resume: selectedResume || user?.profile?.resumeName || '' });
       if (liveRow?.id) {
         created.id = liveRow.id;
         if (liveRow.applied_at) created.appliedAt = liveRow.applied_at;
@@ -801,20 +801,24 @@ export function JobDetail() {
   );
 }
 
-const completion = (p) =>
-  Math.round(
-    ([p.phone, p.summary, p.skills.length, p.education, p.experience, p.locations.length, p.resumeName].filter(
+const completion = (p = {}) => {
+  const skillsLen = Array.isArray(p?.skills) ? p.skills.length : 0;
+  const locsLen = Array.isArray(p?.locations) ? p.locations.length : 0;
+  return Math.round(
+    ([p?.phone, p?.summary, skillsLen, p?.education, p?.experience, locsLen, p?.resumeName].filter(
       Boolean
     ).length /
       7) *
       100
   );
+};
 
 export function SeekerHome() {
   const { db, user } = useApp();
-  const mine = db.applications.filter((a) => a.seekerId === user.id);
-  const pc = completion(user.profile);
-  const rec = filterJobs(db, { sort: 'relevance' }, user.profile.skills)
+  const mine = (db.applications || []).filter((a) => a.seekerId === user?.id);
+  const pc = completion(user?.profile);
+  const userSkills = user?.profile?.skills || [];
+  const rec = filterJobs(db, { sort: 'relevance' }, userSkills)
     .filter((j) => !mine.some((a) => a.jobId === j.id))
     .slice(0, 3);
   const recent = filterJobs(db, {}).slice(0, 3);
@@ -914,9 +918,9 @@ export function SeekerHome() {
 
 export function Saved() {
   const { db, user } = useApp();
-  const jobs = db.saved
-    .filter((s) => s.seekerId === user.id)
-    .map((s) => db.jobs.find((j) => j.id === s.jobId))
+  const jobs = (db.saved || [])
+    .filter((s) => s.seekerId === user?.id)
+    .map((s) => (db.jobs || []).find((j) => j.id === s.jobId))
     .filter(Boolean);
 
   return (
@@ -942,9 +946,9 @@ export function Saved() {
 export function Applications() {
   const { db, user, withdrawApp } = useApp();
   const [withdrawingId, setWithdrawingId] = useState(null);
-  const apps = db.applications
-    .filter((a) => a.seekerId === user.id)
-    .sort((a, b) => b.appliedAt.localeCompare(a.appliedAt));
+  const apps = (db.applications || [])
+    .filter((a) => a.seekerId === user?.id)
+    .sort((a, b) => (b.appliedAt || '').localeCompare(a.appliedAt || ''));
   const steps = ['Applied', 'Under Review', 'Interview', 'Hired'];
 
   return (
@@ -1301,13 +1305,21 @@ export function MyReports() {
 }
 
 export function Profile() {
-  const { user, notify, saveProfile } = useApp();
-  const p = user.profile || {};
+  const { db, user, notify, saveProfile } = useApp();
+  const p = user?.profile || {};
   const [f, setF] = useState({
-    name: user.name || '',
-    ...p,
-    skills: (p.skills || []).join(', '),
-    locations: (p.locations || []).join(', '),
+    name: user?.name || '',
+    phone: p.phone || '',
+    summary: p.summary || '',
+    education: p.education || '',
+    experience: p.experience || '',
+    resumeName: p.resumeName || '',
+    arrangements: Array.isArray(p.arrangements) ? p.arrangements : [],
+    accessPrefs: Array.isArray(p.accessPrefs)
+      ? p.accessPrefs
+      : (Array.isArray(p.access_prefs) ? p.access_prefs : []),
+    skills: (Array.isArray(p.skills) ? p.skills : []).join(', '),
+    locations: (Array.isArray(p.locations) ? p.locations : []).join(', '),
   });
 
   const list = (s) =>
@@ -1370,7 +1382,7 @@ export function Profile() {
                 <input
                   type="checkbox"
                   className="size-4 accent-brand"
-                  checked={f.arrangements.includes(a)}
+                  checked={(f.arrangements || []).includes(a)}
                   onChange={() => tog('arrangements', a)}
                 />
                 {a}
@@ -1390,12 +1402,12 @@ export function Profile() {
             You never need to disclose medical conditions or diagnoses. These preferences are private to your account and never visible to prospective employers.
           </p>
           <div className="space-y-2 pt-2">
-            {db.tags.map((t) => (
+            {(db?.tags || []).map((t) => (
               <label key={t.id} className="flex items-center gap-2.5 text-xs sm:text-sm text-ink cursor-pointer py-1">
                 <input
                   type="checkbox"
                   className="size-4 accent-brand"
-                  checked={f.accessPrefs.includes(t.id)}
+                  checked={(f.accessPrefs || []).includes(t.id)}
                   onChange={() => tog('accessPrefs', t.id)}
                 />
                 {t.label}

@@ -156,7 +156,7 @@ export function Admin() {
         <StatTile n={activeDisputes.length} l="Active Investigations" icon={ShieldAlert} tone="danger" />
         <StatTile n={pendingEvidence.length} l="Evidence Verifications" icon={FileText} tone="warn" />
         <StatTile n={pendingVerifications.length} l="Company Audits" icon={ShieldCheck} />
-        <StatTile n={db.jobs.length} l="Monitored Listings" icon={Briefcase} />
+        <StatTile n={(db.jobs || []).length} l="Monitored Listings" icon={Briefcase} />
       </div>
 
       {/* Primary Section Tabs */}
@@ -209,7 +209,7 @@ export function Admin() {
           {filteredReports.length ? (
             <div className="space-y-4">
               {filteredReports.map((r) => {
-                const job = db.jobs.find((j) => j.id === r.jobId);
+                const job = (db.jobs || []).find((j) => j.id === r.jobId);
                 const isFrozen = job?.status === 'Suspended_Fraud_Hold' || !job?.active;
                 const isSelected = selectedCase?.id === r.id;
 
@@ -417,8 +417,8 @@ export function Admin() {
 
           {db.evidence?.length ? (
             <div className="space-y-4">
-              {[...db.evidence].reverse().map((ev) => {
-                const employer = db.users.find((u) => u.id === ev.employerId);
+              {[...(db.evidence || [])].reverse().map((ev) => {
+                const employer = (db.users || []).find((u) => u.id === ev.employerId);
                 const comp = employer?.company || 'Employer';
 
                 return (
@@ -512,13 +512,13 @@ export function Admin() {
 
       {/* TAB 3: COMPANY LEGAL IDENTITY VERIFICATION QUEUE */}
       {tab === 'verify' &&
-        (db.verifications.length ? (
+        ((db.verifications || []).length ? (
           <div className="space-y-4">
             <div className="bg-soft/40 p-3 rounded-xl border border-line/50 text-xs text-muted">
               <strong>Accountability Rule:</strong> Approving company legal identity certifies that the employer exists as an entity. It does <em>not</em> automatically certify their workplace accessibility.
             </div>
 
-            {[...db.verifications].reverse().map((v) => (
+            {[...(db.verifications || [])].reverse().map((v) => (
               <Card key={v.id} className="p-6 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line/60 pb-2">
                   <h3 className="font-display text-xl font-bold text-ink">
@@ -640,7 +640,7 @@ export function Admin() {
       {/* TAB 5: USERS DIRECTORY */}
       {tab === 'users' && (
         <div className="space-y-3">
-          {db.users.map((u) => (
+          {(db.users || []).map((u) => (
             <Card key={u.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
@@ -671,7 +671,7 @@ export function Admin() {
       {/* TAB 6: JOBS DIRECTORY */}
       {tab === 'jobs' && (
         <div className="space-y-3">
-          {db.jobs.map((j) => (
+          {(db.jobs || []).map((j) => (
             <Card key={j.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -721,7 +721,7 @@ export function Admin() {
           </form>
 
           <ul className="divide-y divide-line/40">
-            {db.tags.map((t) => (
+            {(db.tags || []).map((t) => (
               <li key={t.id} className="py-2.5 flex items-center justify-between text-sm text-ink">
                 <span className="font-medium">{t.label}</span>
                 <Btn

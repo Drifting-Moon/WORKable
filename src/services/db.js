@@ -59,21 +59,23 @@ export const isVerified = (d, job) => employerStatus(d, job.employerId) === 'Ver
 
 /* ---------- Matching: score = matched required skills / total required skills x 100 ---------- */
 export function matchJob(skills = [], job) {
-  const have = new Set(skills.map((s) => s.trim().toLowerCase()));
-  const matched = job.skills.filter((s) => have.has(s.toLowerCase()));
-  const missing = job.skills.filter((s) => !have.has(s.toLowerCase()));
-  return { score: job.skills.length ? Math.round((matched.length / job.skills.length) * 100) : 0, matched, missing };
+  const safeJobSkills = Array.isArray(job?.skills) ? job.skills : [];
+  const safeUserSkills = Array.isArray(skills) ? skills : [];
+  const have = new Set(safeUserSkills.map((s) => (s || '').trim().toLowerCase()));
+  const matched = safeJobSkills.filter((s) => have.has((s || '').toLowerCase()));
+  const missing = safeJobSkills.filter((s) => !have.has((s || '').toLowerCase()));
+  return { score: safeJobSkills.length ? Math.round((matched.length / safeJobSkills.length) * 100) : 0, matched, missing };
 }
 
 /* ---------- Search & filters (all filters combine with AND) ---------- */
 export function filterJobs(d, f = {}, skills = []) {
   const q = (f.q || '').toLowerCase().trim();
   const loc = (f.location || '').toLowerCase().trim();
-  let r = d.jobs.filter((j) => {
-    const owner = d.users.find((u) => u.id === j.employerId);
+  let r = (d.jobs || []).filter((j) => {
+    const owner = (d.users || []).find((u) => u.id === j.employerId);
     if (!j.active || owner?.suspended) return false;
-    if (q && ![j.title, companyOf(d, j.employerId), j.desc, ...j.skills].join(' ').toLowerCase().includes(q)) return false;
-    if (loc && !j.location.toLowerCase().includes(loc)) return false;
+    if (q && ![j.title || '', companyOf(d, j.employerId) || '', j.desc || '', ...(Array.isArray(j.skills) ? j.skills : [])].join(' ').toLowerCase().includes(q)) return false;
+    if (loc && !(j.location || '').toLowerCase().includes(loc)) return false;
     if (f.type && j.type !== f.type) return false;
     const arrangement = f.arr || f.arrangement;
     if (arrangement && j.arrangement !== arrangement) return false;
@@ -82,7 +84,7 @@ export function filterJobs(d, f = {}, skills = []) {
     if ((f.verified || f.verifiedOnly) && !isVerified(d, j)) return false;
     return true;
   });
-  const byNew = (a, b) => b.postedAt.localeCompare(a.postedAt);
+  const byNew = (a, b) => (b.postedAt || '').localeCompare(a.postedAt || '');
   r = f.sort === 'relevance' && skills.length ? r.sort((a, b) => matchJob(skills, b).score - matchJob(skills, a).score || byNew(a, b)) : r.sort(byNew);
   return r;
 }

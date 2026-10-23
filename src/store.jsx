@@ -66,6 +66,20 @@ export const DEFAULT_PREFS = {
   personas: {},
 };
 
+export const normalizeProfile = (prof = {}) => ({
+  phone: prof?.phone || '',
+  summary: prof?.summary || '',
+  education: prof?.education || '',
+  experience: prof?.experience || '',
+  skills: Array.isArray(prof?.skills) ? prof.skills : [],
+  locations: Array.isArray(prof?.locations) ? prof.locations : [],
+  arrangements: Array.isArray(prof?.arrangements) ? prof.arrangements : [],
+  accessPrefs: Array.isArray(prof?.accessPrefs)
+    ? prof.accessPrefs
+    : (Array.isArray(prof?.access_prefs) ? prof.access_prefs : []),
+  resumeName: prof?.resumeName || prof?.resume_name || '',
+});
+
 export function AppProvider({ children }) {
   const [db, setDb] = useState(load);
   const [uid, setUid] = useState(() => localStorage.getItem('workable_session'));
@@ -81,7 +95,13 @@ export function AppProvider({ children }) {
     }
   });
 
-  const user = realUser || db.users.find((u) => u.id === uid && !u.suspended) || null;
+  const rawUser = realUser || db.users.find((u) => u.id === uid && !u.suspended) || null;
+  const user = rawUser
+    ? {
+        ...rawUser,
+        profile: normalizeProfile(rawUser.profile),
+      }
+    : null;
 
   // Supabase Auth listener
   useEffect(() => {
@@ -101,17 +121,7 @@ export function AppProvider({ children }) {
           role: prof?.role || 'seeker',
           company: prof?.company || su.user_metadata?.company || null,
           suspended: prof?.suspended || false,
-          profile: {
-            phone: prof?.phone || '',
-            summary: prof?.summary || '',
-            skills: prof?.skills || [],
-            education: prof?.education || '',
-            experience: prof?.experience || '',
-            locations: prof?.locations || [],
-            arrangements: prof?.arrangements || [],
-            accessPrefs: prof?.access_prefs || [],
-            resumeName: prof?.resume_name || '',
-          },
+          profile: normalizeProfile(prof),
         };
 
         setDb((prev) => {
@@ -584,7 +594,7 @@ export function AppProvider({ children }) {
           role: prof?.role || 'seeker',
           company: prof?.company || su.user_metadata?.company || null,
           suspended: prof?.suspended || false,
-          profile: prof || {},
+          profile: normalizeProfile(prof),
         };
         setRealUser(fullUser);
         setUid(fullUser.id);
@@ -607,17 +617,7 @@ export function AppProvider({ children }) {
         role: formData.role,
         company: formData.role === 'employer' ? formData.company?.trim() : null,
         suspended: false,
-        profile: {
-          phone: '',
-          summary: '',
-          skills: [],
-          education: '',
-          experience: '',
-          locations: [],
-          arrangements: [],
-          accessPrefs: [],
-          resumeName: '',
-        },
+        profile: normalizeProfile({}),
       };
 
       setDb((prev) => {

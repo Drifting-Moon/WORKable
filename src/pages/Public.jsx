@@ -35,7 +35,7 @@ export function Landing() {
   const [q, setQ] = useState('');
 
   // Sample curated jobs for the editorial showcase
-  const featuredJobs = db.jobs.slice(0, 3);
+  const featuredJobs = (db.jobs || []).slice(0, 3);
 
   // Detailed accommodation taxonomy explanations
   const taxonomyDetails = {
@@ -56,15 +56,15 @@ export function Landing() {
     );
   };
 
-  const matchingJobsCount = db.jobs.filter((j) => {
-    if (selectedTags.length > 0 && !selectedTags.every((t) => j.tags.includes(t))) {
+  const matchingJobsCount = (db.jobs || []).filter((j) => {
+    if (selectedTags.length > 0 && !selectedTags.every((t) => (j.tags || []).includes(t))) {
       return false;
     }
     if (q.trim()) {
       const term = q.toLowerCase();
-      const matchTitle = j.title.toLowerCase().includes(term);
-      const matchSkill = j.skills.some((s) => s.toLowerCase().includes(term));
-      const matchLoc = j.location.toLowerCase().includes(term);
+      const matchTitle = (j.title || '').toLowerCase().includes(term);
+      const matchSkill = (j.skills || []).some((s) => s.toLowerCase().includes(term));
+      const matchLoc = (j.location || '').toLowerCase().includes(term);
       if (!matchTitle && !matchSkill && !matchLoc) return false;
     }
     return true;

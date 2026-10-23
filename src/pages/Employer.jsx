@@ -44,8 +44,8 @@ import { getSignedResumeUrl } from '../services/supabase';
 
 const useMine = () => {
   const { db, user } = useApp();
-  const jobs = db.jobs.filter((j) => j.employerId === user.id);
-  const apps = db.applications.filter(
+  const jobs = (db.jobs || []).filter((j) => j.employerId === user?.id);
+  const apps = (db.applications || []).filter(
     (a) => jobs.some((j) => j.id === a.jobId) || (a.jobs && a.jobs.employer_id === user?.id)
   );
   return { db, user, jobs, apps };
@@ -53,7 +53,7 @@ const useMine = () => {
 
 export function EmpHome() {
   const { db, user, jobs, apps } = useMine();
-  const st = employerStatus(db, user.id);
+  const st = employerStatus(db, user?.id);
 
   const StatTile = ({ n, l, desc }) => (
     <Card className="flex flex-col justify-between p-5">
@@ -67,7 +67,7 @@ export function EmpHome() {
 
   return (
     <div className="space-y-8">
-      <Title sub={`Employer workspace for ${user.company}. Manage listings and review applicant profiles.`}>
+      <Title sub={`Employer workspace for ${user?.company || 'your organization'}. Manage listings and review applicant profiles.`}>
         Employer Control Center
       </Title>
 
@@ -144,12 +144,12 @@ export function EmpJobs() {
                   <Badge tone={j.active ? 'ok' : 'warn'}>{j.active ? 'Active' : 'Inactive'}</Badge>
                 </div>
                 <p className="text-xs sm:text-sm text-muted">
-                  {j.location} · {j.arrangement} · {db.applications.filter((a) => a.jobId === j.id).length}{' '}
+                  {j.location} · {j.arrangement} · {(db.applications || []).filter((a) => a.jobId === j.id).length}{' '}
                   applications received
                 </p>
                 <div className="flex flex-wrap gap-1.5 pt-1">
-                  {j.tags.map((tid) => {
-                    const t = db.tags.find((x) => x.id === tid);
+                  {(j.tags || []).map((tid) => {
+                    const t = (db.tags || []).find((x) => x.id === tid);
                     return (
                       <Badge key={tid} tone="info" className="text-[11px] py-0.5">
                         {t?.label || tid}
@@ -223,11 +223,15 @@ export function JobForm() {
   const { id } = useParams();
   const nav = useNavigate();
   const { db, user, act, notify, saveRealJob } = useApp();
-  const old = id && db.jobs.find((j) => j.id === id && j.employerId === user.id);
+  const old = id && (db.jobs || []).find((j) => j.id === id && j.employerId === user?.id);
 
   const [f, setF] = useState(
     old
-      ? { ...old, skills: old.skills.join(', ') }
+      ? {
+          ...old,
+          skills: (Array.isArray(old.skills) ? old.skills : []).join(', '),
+          tags: Array.isArray(old.tags) ? old.tags : [],
+        }
       : {
           title: '',
           desc: '',
@@ -342,16 +346,16 @@ export function JobForm() {
             Select only accommodations your workplace genuinely supports. Candidates rely on accurate, specific disclosures.
           </p>
           <div className="space-y-2">
-            {db.tags.map((t) => (
+            {(db.tags || []).map((t) => (
               <label key={t.id} className="flex items-center gap-2.5 text-xs sm:text-sm text-ink cursor-pointer py-1">
                 <input
                   type="checkbox"
                   className="size-4 accent-brand"
-                  checked={f.tags.includes(t.id)}
+                  checked={(f.tags || []).includes(t.id)}
                   onChange={() =>
                     setF({
                       ...f,
-                      tags: f.tags.includes(t.id) ? f.tags.filter((x) => x !== t.id) : [...f.tags, t.id],
+                      tags: (f.tags || []).includes(t.id) ? (f.tags || []).filter((x) => x !== t.id) : [...(f.tags || []), t.id],
                     })
                   }
                 />
@@ -478,21 +482,21 @@ export function Applicants() {
           <div className="space-y-4 text-xs sm:text-sm text-ink leading-relaxed">
             <div>
               <p className="font-bold text-brand uppercase tracking-wider text-[11px]">Professional Summary</p>
-              <p className="text-muted mt-0.5">{view.c.profile.summary || 'No summary provided.'}</p>
+              <p className="text-muted mt-0.5">{view.c?.profile?.summary || 'No summary provided.'}</p>
             </div>
             <div className="grid grid-cols-2 gap-3 pt-2 border-t border-line/60">
               <div>
                 <p className="font-bold text-muted text-[11px] uppercase">Declared Skills</p>
-                <p className="font-semibold text-ink mt-0.5">{view.c.profile.skills.join(', ') || '—'}</p>
+                <p className="font-semibold text-ink mt-0.5">{(Array.isArray(view.c?.profile?.skills) ? view.c.profile.skills : []).join(', ') || '—'}</p>
               </div>
               <div>
                 <p className="font-bold text-muted text-[11px] uppercase">Education</p>
-                <p className="text-ink mt-0.5">{view.c.profile.education || '—'}</p>
+                <p className="text-ink mt-0.5">{view.c?.profile?.education || '—'}</p>
               </div>
             </div>
             <div className="pt-2 border-t border-line/60">
               <p className="font-bold text-muted text-[11px] uppercase">Experience</p>
-              <p className="text-ink mt-0.5">{view.c.profile.experience || '—'}</p>
+              <p className="text-ink mt-0.5">{view.c?.profile?.experience || '—'}</p>
             </div>
             <div className="pt-2 border-t border-line/60">
               <p className="font-bold text-muted text-[11px] uppercase">Personal Cover Note</p>
@@ -534,8 +538,8 @@ export function Verification() {
   const [f, setF] = useState({ description: '', evidence: '' });
   const [errs, setErrs] = useState({});
 
-  const mine = db.verifications.filter((v) => v.employerId === user.id);
-  const st = employerStatus(db, user.id);
+  const mine = (db.verifications || []).filter((v) => v.employerId === user?.id);
+  const st = employerStatus(db, user?.id);
   const last = mine[mine.length - 1];
 
   const submit = (e) => {
@@ -640,7 +644,7 @@ export function EmpEvidence() {
     notes: '',
   });
 
-  const evidenceList = (db.evidence || []).filter((e) => e.employerId === user.id);
+  const evidenceList = (db.evidence || []).filter((e) => e.employerId === user?.id);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -816,7 +820,7 @@ export function EmpDisputes() {
   const [responseText, setResponseText] = useState('');
   const [evidenceAttachment, setEvidenceAttachment] = useState('');
 
-  const reports = (db.reports || []).filter((r) => r.employerId === user.id);
+  const reports = (db.reports || []).filter((r) => r.employerId === user?.id);
 
   const handleRespond = (e) => {
     e.preventDefault();
@@ -836,7 +840,7 @@ export function EmpDisputes() {
       {reports.length ? (
         <div className="space-y-4">
           {reports.map((r) => {
-            const j = db.jobs.find((x) => x.id === r.jobId);
+            const j = (db.jobs || []).find((x) => x.id === r.jobId);
             const needsResponse = r.caseStatus === 'Employer Response Requested';
 
             return (
