@@ -1,0 +1,526 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Lexend", "Atkinson Hyperlegible", system-ui, sans-serif;
+  --font-display: "Fraunces", Georgia, serif;
+  --color-paper: #f8fafc;
+  --color-surface: #ffffff;
+  --color-soft: #f1f5f9;
+  --color-ink: #0f172a;
+  --color-muted: #475569;
+  --color-brand: #0f3b4c;
+  --color-brand-d: #082531;
+  --color-accent: #2563eb;
+  --color-accent-soft: #eff6ff;
+  --color-ok: #059669;
+  --color-okbg: #ecfdf5;
+  --color-warn: #d97706;
+  --color-warnbg: #fffbeb;
+  --color-bad: #dc2626;
+  --color-badbg: #fef2f2;
+  --color-line: #e2e8f0;
+  --color-line-subtle: #f8fafc;
+}
+
+html {
+  scroll-behavior: smooth;
+  font-size: 100%;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  line-height: var(--a11y-line-height, 1.6);
+  letter-spacing: var(--a11y-letter-spacing, normal);
+  word-spacing: var(--a11y-word-spacing, normal);
+  transition: background-color 0.2s ease, color 0.2s ease;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+}
+
+:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* ========================================================
+   COLOR MODES & THEMES
+   ======================================================== */
+
+/* Theme 1: Slate Porcelain (Clean Modern Light - Default / Clean Slate) */
+:root,
+html,
+html.theme-default {
+  --color-paper: #f8fafc;
+  --color-surface: #ffffff;
+  --color-soft: #f1f5f9;
+  --color-ink: #0f172a;
+  --color-muted: #475569;
+  --color-brand: #0f3b4c;
+  --color-brand-d: #082531;
+  --color-accent: #2563eb;
+  --color-accent-soft: #eff6ff;
+  --color-ok: #059669;
+  --color-okbg: #ecfdf5;
+  --color-warn: #d97706;
+  --color-warnbg: #fffbeb;
+  --color-bad: #dc2626;
+  --color-badbg: #fef2f2;
+  --color-line: #e2e8f0;
+  --color-line-subtle: #f8fafc;
+  color-scheme: light;
+}
+
+/* Theme 2: Midnight Obsidian (Reference Image Sleek Dark Aesthetic) */
+html.theme-midnight,
+html.dark {
+  --color-paper: #090d16;
+  --color-surface: #131b2e;
+  --color-soft: #131b2e;
+  --color-ink: #f8fafc;
+  --color-muted: #94a3b8;
+  --color-brand: #38bdf8;
+  --color-brand-d: #0ea5e9;
+  --color-accent: #60a5fa;
+  --color-accent-soft: #1e293b;
+  --color-ok: #34d399;
+  --color-okbg: #064e3b;
+  --color-warn: #fbbf24;
+  --color-warnbg: #78350f;
+  --color-bad: #f87171;
+  --color-badbg: #7f1d1d;
+  --color-line: #1e293b;
+  --color-line-subtle: #0f172a;
+  color-scheme: dark;
+}
+
+/* Theme 3: Nordic Forest (Deep Emerald Night) */
+html.theme-emerald {
+  --color-paper: #051410;
+  --color-surface: #0c2620;
+  --color-soft: #0c2620;
+  --color-ink: #f0fdf4;
+  --color-muted: #86efac;
+  --color-brand: #10b981;
+  --color-brand-d: #059669;
+  --color-accent: #34d399;
+  --color-accent-soft: #064e3b;
+  --color-ok: #34d399;
+  --color-okbg: #064e3b;
+  --color-warn: #f59e0b;
+  --color-warnbg: #78350f;
+  --color-bad: #f87171;
+  --color-badbg: #7f1d1d;
+  --color-line: #13392e;
+  --color-line-subtle: #081f18;
+  color-scheme: dark;
+}
+
+/* Theme 4: Warm Sand & Terracotta (Soft Editorial) */
+html.theme-warm {
+  --color-paper: #fbf9f4;
+  --color-surface: #ffffff;
+  --color-soft: #f2eee5;
+  --color-ink: #1c1917;
+  --color-muted: #78716c;
+  --color-brand: #c2410c;
+  --color-brand-d: #9a3412;
+  --color-accent: #ea580c;
+  --color-accent-soft: #ffedd5;
+  --color-ok: #15803d;
+  --color-okbg: #f0fdf4;
+  --color-warn: #b45309;
+  --color-warnbg: #fef3c7;
+  --color-bad: #b91c1c;
+  --color-badbg: #fef2f2;
+  --color-line: #e7e2d7;
+  --color-line-subtle: #f5f1e8;
+  color-scheme: light;
+}
+
+/* Theme 5: OLED Pitch Black (Ultra High-Contrast) */
+html.theme-oled {
+  --color-paper: #000000;
+  --color-surface: #121214;
+  --color-soft: #121214;
+  --color-ink: #ffffff;
+  --color-muted: #a1a1aa;
+  --color-brand: #3b82f6;
+  --color-brand-d: #1d4ed8;
+  --color-accent: #facc15;
+  --color-accent-soft: #27272a;
+  --color-ok: #22c55e;
+  --color-okbg: #052e16;
+  --color-warn: #eab308;
+  --color-warnbg: #422006;
+  --color-bad: #ef4444;
+  --color-badbg: #450a0a;
+  --color-line: #27272a;
+  --color-line-subtle: #18181b;
+  color-scheme: dark;
+}
+
+/* Dark theme surfaces and inputs overrides */
+html.dark body,
+html.theme-midnight body,
+html.theme-emerald body,
+html.theme-oled body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+html.dark header, 
+html.dark .bg-white,
+html.theme-midnight header,
+html.theme-midnight .bg-white,
+html.theme-emerald header,
+html.theme-emerald .bg-white,
+html.theme-oled header,
+html.theme-oled .bg-white {
+  background-color: var(--color-soft) !important;
+  color: var(--color-ink) !important;
+  border-color: var(--color-line) !important;
+}
+
+html.dark input, 
+html.dark select, 
+html.dark textarea,
+html.theme-midnight input,
+html.theme-midnight select,
+html.theme-midnight textarea,
+html.theme-emerald input,
+html.theme-emerald select,
+html.theme-emerald textarea,
+html.theme-oled input,
+html.theme-oled select,
+html.theme-oled textarea {
+  background-color: var(--color-paper) !important;
+  color: var(--color-ink) !important;
+  border-color: var(--color-line) !important;
+}
+
+/* High Contrast Mode */
+html.hc {
+  --color-paper: #ffffff;
+  --color-soft: #ffffff;
+  --color-ink: #000000;
+  --color-muted: #000000;
+  --color-brand: #0000ee;
+  --color-brand-d: #000099;
+  --color-line: #000000;
+  --color-ok: #006600;
+  --color-okbg: #e6ffe6;
+  --color-warn: #664400;
+  --color-warnbg: #ffffcc;
+  --color-bad: #990000;
+  --color-badbg: #ffe6e6;
+}
+
+html.hc * {
+  border-color: #000000 !important;
+}
+
+html.hc a {
+  text-decoration: underline !important;
+  font-weight: 700;
+}
+
+/* Full Width Layout */
+html.a11y-fullwidth #main {
+  max-width: 100% !important;
+  padding-left: 2rem !important;
+  padding-right: 2rem !important;
+}
+
+/* Content Scaling */
+#main {
+  transform-origin: top center;
+  transition: transform 0.15s ease-out;
+}
+
+/* ========================================================
+   CONTRAST & FILTER MODES
+   ======================================================== */
+html.a11y-monochrome {
+  filter: grayscale(100%) !important;
+}
+
+html.a11y-low-sat {
+  filter: saturate(50%) !important;
+}
+
+html.a11y-high-sat {
+  filter: saturate(180%) !important;
+}
+
+html.a11y-low-contrast {
+  filter: contrast(80%) !important;
+}
+
+html.a11y-high-contrast {
+  filter: contrast(130%) brightness(105%) !important;
+}
+
+html.a11y-inverted {
+  filter: invert(100%) hue-rotate(180deg) !important;
+}
+
+/* Protect the accessibility drawer itself from distorting color filters */
+#a11y-drawer-container {
+  filter: none !important;
+}
+
+/* ========================================================
+   FONT & TEXT ADJUSTMENTS
+   ======================================================== */
+html.a11y-align-left body,
+html.a11y-align-left p,
+html.a11y-align-left h1,
+html.a11y-align-left h2,
+html.a11y-align-left h3 {
+  text-align: left !important;
+}
+
+html.a11y-align-center body,
+html.a11y-align-center p,
+html.a11y-align-center h1,
+html.a11y-align-center h2,
+html.a11y-align-center h3 {
+  text-align: center !important;
+}
+
+html.a11y-align-right body,
+html.a11y-align-right p,
+html.a11y-align-right h1,
+html.a11y-align-right h2,
+html.a11y-align-right h3 {
+  text-align: right !important;
+}
+
+/* Dyslexia-friendly Font */
+html.a11y-dyslexia body,
+html.a11y-dyslexia * {
+  font-family: "Lexend", "Atkinson Hyperlegible", Verdana, sans-serif !important;
+  letter-spacing: 0.05em !important;
+  word-spacing: 0.15em !important;
+  line-height: 1.8 !important;
+}
+
+/* ========================================================
+   HIGHLIGHTS
+   ======================================================== */
+/* Highlight Links */
+html.a11y-hl-links a {
+  background-color: #fef08a !important;
+  color: #854d0e !important;
+  text-decoration: underline !important;
+  text-decoration-thickness: 2px !important;
+  padding: 0 3px !important;
+  border-radius: 4px !important;
+}
+html.dark.a11y-hl-links a {
+  background-color: #854d0e !important;
+  color: #fef08a !important;
+}
+
+/* Highlight Headings */
+html.a11y-hl-headings h1,
+html.a11y-hl-headings h2,
+html.a11y-hl-headings h3 {
+  border-left: 5px solid #2563eb !important;
+  padding-left: 0.5rem !important;
+  background-color: rgba(37, 99, 235, 0.08) !important;
+  border-radius: 0 4px 4px 0 !important;
+}
+
+/* High Focus Ring */
+html.a11y-focus-ring :focus-visible {
+  outline: 4px solid #2563eb !important;
+  outline-offset: 4px !important;
+  box-shadow: 0 0 0 8px rgba(37, 99, 235, 0.25) !important;
+}
+
+/* ========================================================
+   CURSORS
+   ======================================================== */
+html.a11y-cursor-big-black,
+html.a11y-cursor-big-black * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Cpath fill='%23000000' stroke='%23ffffff' stroke-width='2' d='M4 2l22 22-9 1 5.5 10-4.5 2-5.5-10-8.5 8.5z'/%3E%3C/svg%3E"), auto !important;
+}
+
+html.a11y-cursor-big-white,
+html.a11y-cursor-big-white * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Cpath fill='%23ffffff' stroke='%23000000' stroke-width='2' d='M4 2l22 22-9 1 5.5 10-4.5 2-5.5-10-8.5 8.5z'/%3E%3C/svg%3E"), auto !important;
+}
+
+/* ========================================================
+   MOTION REDUCTION & EPILEPSY SAFE
+   ======================================================== */
+.still *, 
+.still *::before, 
+.still *::after,
+html.a11y-no-motion *,
+html.a11y-no-motion *::before,
+html.a11y-no-motion *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ========================================================
+   READING TOOLS OVERLAYS
+   ======================================================== */
+.reading-ruler {
+  position: fixed;
+  left: 0;
+  width: 100vw;
+  height: 28px;
+  background: rgba(37, 99, 235, 0.15);
+  border-top: 2px solid #2563eb;
+  border-bottom: 2px solid #2563eb;
+  pointer-events: none;
+  z-index: 9998;
+  transform: translateY(-50%);
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.2);
+}
+
+.reading-mask-top,
+.reading-mask-bottom {
+  position: fixed;
+  left: 0;
+  width: 100vw;
+  background: rgba(0, 0, 0, 0.65);
+  pointer-events: none;
+  z-index: 9997;
+}
+
+/* WorkAble usability polish: clear hierarchy, visible actions, uncluttered navigation. */
+header.sticky {
+  background: color-mix(in srgb, var(--color-surface) 96%, transparent);
+  border-bottom-color: var(--color-line);
+  box-shadow: 0 2px 12px rgb(15 23 42 / 0.035);
+}
+header.sticky > div:first-child {
+  min-height: 76px;
+  gap: 1rem;
+}
+header.sticky nav[aria-label="Main navigation"] {
+  flex: 1;
+  justify-content: center;
+  min-width: 0;
+}
+header.sticky nav[aria-label="Main navigation"] a[aria-current="page"],
+header.sticky nav[aria-label="Mobile navigation"] a[aria-current="page"] {
+  color: var(--color-brand);
+  background: var(--color-accent-soft);
+  box-shadow: inset 0 -2px 0 var(--color-brand);
+}
+.topnav-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  min-height: 40px;
+  padding: .55rem .85rem;
+  border: 1px solid var(--color-line);
+  border-radius: .7rem;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-size: .875rem;
+  font-weight: 650;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.topnav-more:hover,
+.topnav-more-active {
+  border-color: var(--color-brand);
+  background: var(--color-accent-soft);
+  color: var(--color-brand);
+}
+.topnav-menu {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + .55rem);
+  right: 0;
+  width: 230px;
+  padding: .45rem;
+  border: 1px solid var(--color-line);
+  border-radius: .9rem;
+  background: var(--color-surface);
+  box-shadow: 0 16px 40px rgb(15 23 42 / .16);
+}
+.topnav-menu-mobile { top: calc(100% + .45rem); left: 0; right: auto; }
+.topnav-menu-link {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  padding: .65rem .8rem;
+  border-radius: .55rem;
+  color: var(--color-ink);
+  font-size: .875rem;
+  font-weight: 550;
+  text-decoration: none;
+}
+.topnav-menu-link:hover,
+.topnav-menu-link-active { background: var(--color-accent-soft); color: var(--color-brand); }
+
+/* Strong, consistent primary actions; quiet secondary actions remain secondary. */
+button:not(.topnav-more),
+a[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--color-accent) !important;
+  outline-offset: 3px;
+}
+main button.bg-brand,
+main a.bg-brand,
+main button.bg-accent,
+main a.bg-accent {
+  box-shadow: 0 2px 0 rgb(15 23 42 / .12);
+  font-weight: 700;
+}
+main button.bg-brand:hover,
+main a.bg-brand:hover,
+main button.bg-accent:hover,
+main a.bg-accent:hover { filter: brightness(1.07); }
+main button:disabled,
+main a[aria-disabled="true"] { cursor: not-allowed; }
+
+/* Improve scanability and stop long forms/cards from feeling crowded. */
+main h1 { margin-bottom: .45rem; }
+main h2 { margin-top: .15rem; }
+main :is(input, select, textarea) { border-radius: .7rem; }
+main :is(input, select, textarea):focus-visible { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 16%, transparent); }
+main article, main section { scroll-margin-top: 7rem; }
+main .rounded-xl.border,
+main .rounded-2xl.border { transition: border-color .16s ease, box-shadow .16s ease; }
+main .rounded-xl.border:hover,
+main .rounded-2xl.border:hover { border-color: color-mix(in srgb, var(--color-brand) 28%, var(--color-line)); }
+
+@media (max-width: 1023px) {
+  header.sticky > div:first-child { min-height: 68px; }
+  header.sticky nav[aria-label="Mobile navigation"] { scrollbar-width: thin; }
+  header.sticky nav[aria-label="Mobile navigation"] a,
+  header.sticky nav[aria-label="Mobile navigation"] button { white-space: nowrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .topnav-more, .topnav-menu-link { transition: none; }
+}
