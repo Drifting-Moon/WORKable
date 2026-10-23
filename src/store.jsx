@@ -86,6 +86,31 @@ export const normalizeProfile = (prof = {}) => ({
   resumeName: prof?.resumeName || prof?.resume_name || '',
 });
 
+export const resolveRole = (prof, su) => {
+  const profRole = (prof?.role || '').toLowerCase().trim();
+  const metaRole = (su?.user_metadata?.role || su?.app_metadata?.role || '').toLowerCase().trim();
+  const hasCompany = !!(prof?.company || su?.user_metadata?.company);
+
+  if (profRole === 'admin' || metaRole === 'admin') return 'admin';
+  if (profRole === 'employer' || metaRole === 'employer' || hasCompany) return 'employer';
+  if (profRole === 'seeker' || metaRole === 'seeker') return 'seeker';
+  return 'seeker';
+};
+
+export const buildFullUser = (su, prof) => {
+  const resolvedRole = resolveRole(prof, su);
+  const resolvedCompany = prof?.company || su?.user_metadata?.company || null;
+  return {
+    id: su.id,
+    name: prof?.name || su.user_metadata?.name || su.email.split('@')[0],
+    email: su.email,
+    role: resolvedRole,
+    company: resolvedCompany,
+    suspended: prof?.suspended || false,
+    profile: normalizeProfile(prof),
+  };
+};
+
 export function AppProvider({ children }) {
   const [db, setDb] = useState(load);
   const [uid, setUid] = useState(() => localStorage.getItem('workable_session'));
@@ -117,27 +142,39 @@ export function AppProvider({ children }) {
     }
 
     const syncSupabaseSession = async (session) => {
-      if (session?.user) {
+      // If current stored session is a demo persona (e.g. u_e1, u_admin), don't let background Supabase overwrite it
+      const currentStoredUid = localStorage.getItem('workable_session');
+      const isDemoSession = currentStoredUid && currentStoredUid.startsWith('u_');
+
+      if (session?.user && !isDemoSession) {
         const su = session.user;
         const prof = await fetchUserProfile(su.id);
-        const fullUser = {
-          id: su.id,
-          name: prof?.name || su.user_metadata?.name || su.email.split('@')[0],
-          email: su.email,
-          role: prof?.role || 'seeker',
-          company: prof?.company || su.user_metadata?.company || null,
-          suspended: prof?.suspended || false,
-          profile: normalizeProfile(prof),
-        };
+        const fullUser = buildFullUser(su, prof);
+
+        // Sync missing profile or role back to Supabase profiles table
+        if (supabase && (!prof || prof.role !== fullUser.role)) {
+          try {
+            await supabase.from('profiles').upsert({
+              id: su.id,
+              name: fullUser.name,
+              email: su.email,
+              role: fullUser.role,
+              company: fullUser.company,
+              updated_at: new Date().toISOString(),
+            });
+          } catch {
+            /* ignore */
+          }
+        }
 
         setDb((prev) => {
-          const exists = prev.users.some((x) => x.id === fullUser.id);
-          if (!exists) {
-            const next = { ...prev, users: [...prev.users, fullUser] };
-            save(next);
-            return next;
-          }
-          return prev;
+          const idx = prev.users.findIndex((x) => x.id === fullUser.id);
+          const nextUsers = idx >= 0
+            ? prev.users.map((x) => (x.id === fullUser.id ? { ...x, ...fullUser } : x))
+            : [...prev.users, fullUser];
+          const next = { ...prev, users: nextUsers };
+          save(next);
+          return next;
         });
 
         setRealUser(fullUser);
@@ -157,7 +194,7 @@ export function AppProvider({ children }) {
             }
           });
         }
-      } else {
+      } else if (!isDemoSession) {
         setRealUser(null);
       }
       setAuthLoading(false);
@@ -547,34 +584,34 @@ export function AppProvider({ children }) {
       const data = await signInWithSupabase(cleanEmail, pw);
       const su = data.user;
       const prof = await fetchUserProfile(su.id);
-      const fullUser = {
-        id: su.id,
-        name: prof?.name || su.user_metadata?.name || cleanEmail.split('@')[0],
-        email: su.email,
-        role: prof?.role || 'seeker',
-        company: prof?.company || su.user_metadata?.company || null,
-        suspended: prof?.suspended || false,
-        profile: {
-          phone: prof?.phone || '',
-          summary: prof?.summary || '',
-          skills: prof?.skills || [],
-          education: prof?.education || '',
-          experience: prof?.experience || '',
-          locations: prof?.locations || [],
-          arrangements: prof?.arrangements || [],
-          accessPrefs: prof?.access_prefs || [],
-          resumeName: prof?.resume_name || '',
-        },
-      };
-      setDb((prev) => {
-        const exists = prev.users.some((x) => x.id === fullUser.id);
-        if (!exists) {
-          const next = { ...prev, users: [...prev.users, fullUser] };
-          save(next);
-          return next;
+      const fullUser = buildFullUser(su, prof);
+
+      // Ensure Supabase profiles table has the role matching user_metadata/profile
+      if (supabase && (!prof || prof.role !== fullUser.role)) {
+        try {
+          await supabase.from('profiles').upsert({
+            id: su.id,
+            name: fullUser.name,
+            email: su.email,
+            role: fullUser.role,
+            company: fullUser.company,
+            updated_at: new Date().toISOString(),
+          });
+        } catch {
+          /* ignore */
         }
-        return prev;
+      }
+
+      setDb((prev) => {
+        const idx = prev.users.findIndex((x) => x.id === fullUser.id);
+        const nextUsers = idx >= 0
+          ? prev.users.map((x) => (x.id === fullUser.id ? { ...x, ...fullUser } : x))
+          : [...prev.users, fullUser];
+        const next = { ...prev, users: nextUsers };
+        save(next);
+        return next;
       });
+      localStorage.setItem('workable_session', fullUser.id);
       setRealUser(fullUser);
       setUid(fullUser.id);
       return fullUser;
@@ -582,6 +619,13 @@ export function AppProvider({ children }) {
 
     // Demo account or Supabase not configured fallback
     try {
+      if (isSupabaseConfigured() && supabase) {
+        try {
+          await signOutWithSupabase();
+        } catch {
+          /* ignore */
+        }
+      }
       const u = loginUser(db, cleanEmail, pw);
       localStorage.setItem('workable_session', u.id);
       setRealUser(u);
@@ -593,15 +637,17 @@ export function AppProvider({ children }) {
         const data = await signInWithSupabase(cleanEmail, pw);
         const su = data.user;
         const prof = await fetchUserProfile(su.id);
-        const fullUser = {
-          id: su.id,
-          name: prof?.name || su.user_metadata?.name || cleanEmail.split('@')[0],
-          email: su.email,
-          role: prof?.role || 'seeker',
-          company: prof?.company || su.user_metadata?.company || null,
-          suspended: prof?.suspended || false,
-          profile: normalizeProfile(prof),
-        };
+        const fullUser = buildFullUser(su, prof);
+        setDb((prev) => {
+          const idx = prev.users.findIndex((x) => x.id === fullUser.id);
+          const nextUsers = idx >= 0
+            ? prev.users.map((x) => (x.id === fullUser.id ? { ...x, ...fullUser } : x))
+            : [...prev.users, fullUser];
+          const next = { ...prev, users: nextUsers };
+          save(next);
+          return next;
+        });
+        localStorage.setItem('workable_session', fullUser.id);
         setRealUser(fullUser);
         setUid(fullUser.id);
         return fullUser;

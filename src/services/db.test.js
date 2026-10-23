@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { seed } from '../data/seed';
 import * as S from './db';
+import { resolveRole, buildFullUser } from '../store';
 
 let d;
 beforeEach(() => { d = structuredClone(seed); });
@@ -393,6 +394,43 @@ describe('TC44–TC50: Accessibility Accountability, Evidence Audits, and Resume
     // Allow owning employer
     S.deleteAccessibilityEvidence(d, ev.id, 'u_e2');
     expect(d.evidence.some((e) => e.id === ev.id)).toBe(false);
+  });
+});
+
+describe('TC54–TC59: Supabase and session role resolution', () => {
+  it('TC54: resolves to employer if su.user_metadata specifies employer even when profile is null', () => {
+    const su = { id: 'uuid-1', email: 'emp@corp.com', user_metadata: { role: 'employer', company: 'Corp HR' } };
+    expect(resolveRole(null, su)).toBe('employer');
+  });
+
+  it('TC55: resolves to employer if company is set in user_metadata even if role omitted', () => {
+    const su = { id: 'uuid-2', email: 'emp2@corp.com', user_metadata: { company: 'TechWorks' } };
+    expect(resolveRole(null, su)).toBe('employer');
+  });
+
+  it('TC56: resolves to employer if profile specifies employer', () => {
+    const prof = { role: 'employer', company: 'BrightPath' };
+    const su = { id: 'uuid-3', email: 'bright@corp.com', user_metadata: {} };
+    expect(resolveRole(prof, su)).toBe('employer');
+  });
+
+  it('TC57: resolves to admin if either profile or user_metadata specifies admin', () => {
+    expect(resolveRole({ role: 'admin' }, { user_metadata: {} })).toBe('admin');
+    expect(resolveRole(null, { user_metadata: { role: 'admin' } })).toBe('admin');
+  });
+
+  it('TC58: defaults to seeker only when role is seeker or unspecified with no company', () => {
+    expect(resolveRole(null, { user_metadata: {} })).toBe('seeker');
+    expect(resolveRole({ role: 'seeker' }, { user_metadata: { role: 'seeker' } })).toBe('seeker');
+  });
+
+  it('TC59: buildFullUser correctly constructs employer user without degrading to seeker', () => {
+    const su = { id: 'uuid-emp', email: 'boss@tech.com', user_metadata: { name: 'Tech Boss', role: 'employer', company: 'Tech Inc' } };
+    const full = buildFullUser(su, null);
+    expect(full.role).toBe('employer');
+    expect(full.company).toBe('Tech Inc');
+    expect(full.name).toBe('Tech Boss');
+    expect(full.email).toBe('boss@tech.com');
   });
 });
 

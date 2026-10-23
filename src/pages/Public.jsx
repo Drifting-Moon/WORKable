@@ -219,7 +219,7 @@ export function Landing() {
                   <Building2 size={16} />
                   <span>Register Company & Post Job</span>
                 </Btn>
-                <Btn v="ghost" as={Link} to="/login" className="!px-5 !py-3 border border-line bg-white">
+                <Btn v="ghost" as={Link} to="/login?role=employer" className="!px-5 !py-3 border border-line bg-white">
                   <span>Demo Sign In as Employer</span>
                 </Btn>
               </div>
@@ -489,7 +489,12 @@ const DEMOS = [
 export function Login() {
   const { login, isSupabase } = useApp();
   const nav = useNavigate();
-  const [f, setF] = useState({ email: '', pw: '' });
+  const [sp] = useSearchParams();
+  const roleParam = sp.get('role');
+  const [f, setF] = useState(() => ({
+    email: roleParam === 'employer' ? 'employer@workable.demo' : '',
+    pw: roleParam === 'employer' ? 'Demo@123' : '',
+  }));
   const [show, setShow] = useState(false);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
@@ -509,8 +514,8 @@ export function Login() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <Title sub="Sign in to your account or launch one of our preconfigured academic demo personas.">
-        Welcome to WorkAble
+      <Title sub={roleParam === 'employer' ? 'Sign in to your Employer workspace or launch the BrightPath Software HR demo persona below.' : 'Sign in to your account or launch one of our preconfigured academic demo personas.'}>
+        {roleParam === 'employer' ? 'Employer Portal Sign In' : 'Welcome to WorkAble'}
       </Title>
 
       <div className="grid gap-6 md:grid-cols-[1.1fr_1.2fr]">
@@ -553,7 +558,7 @@ export function Login() {
                   className={inp}
                   value={f.email}
                   onChange={(e) => setF({ ...f, email: e.target.value })}
-                  placeholder="e.g. seeker@workable.demo"
+                  placeholder={roleParam === 'employer' ? 'e.g. employer@workable.demo' : 'e.g. seeker@workable.demo'}
                 />
               )}
             </Field>
@@ -608,27 +613,38 @@ export function Login() {
             </p>
 
             <div className="space-y-3">
-              {DEMOS.map((d) => (
-                <div
-                  key={d.role}
-                  className="rounded-lg border border-line bg-white/90 p-3.5 hover:border-brand transition-all"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h3 className="font-bold text-sm text-ink">{d.role}</h3>
-                      <p className="text-xs font-semibold text-brand">{d.name}</p>
-                      <p className="text-[11px] text-muted mt-1 leading-normal">{d.desc}</p>
+              {DEMOS.map((d) => {
+                const isTarget = (roleParam === 'employer' && d.role === 'Employer') || (roleParam === 'seeker' && d.role === 'Job Seeker');
+                return (
+                  <div
+                    key={d.role}
+                    className={cx(
+                      'rounded-lg border p-3.5 transition-all',
+                      isTarget
+                        ? 'border-brand ring-2 ring-brand/30 bg-soft/50 shadow-xs'
+                        : 'border-line bg-white/90 hover:border-brand'
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-sm text-ink">{d.role}</h3>
+                          {isTarget && <Badge tone="good">Target Persona</Badge>}
+                        </div>
+                        <p className="text-xs font-semibold text-brand">{d.name}</p>
+                        <p className="text-[11px] text-muted mt-1 leading-normal">{d.desc}</p>
+                      </div>
+                      <Btn
+                        v={isTarget ? 'solid' : 'ghost'}
+                        className="!px-3 !py-1 text-xs shrink-0"
+                        onClick={() => go(d.email, d.pw)}
+                      >
+                        Login as {d.role.split(' ')[0]}
+                      </Btn>
                     </div>
-                    <Btn
-                      v="ghost"
-                      className="!px-3 !py-1 text-xs shrink-0 bg-soft hover:bg-brand hover:text-white"
-                      onClick={() => go(d.email, d.pw)}
-                    >
-                      Login as {d.role.split(' ')[0]}
-                    </Btn>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
