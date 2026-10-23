@@ -447,7 +447,8 @@ export function JobDetail() {
   };
 
   const submit = async () => {
-    const liveAccount = isSupabase && user?.id && !user.email?.toLowerCase().endsWith('@workable.demo');
+    const isLiveJob = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(j?.id);
+    const liveAccount = isSupabase && user?.id && !user.email?.toLowerCase().endsWith('@workable.demo') && isLiveJob;
     let liveRow = null;
     if (liveAccount) {
       try {

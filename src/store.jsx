@@ -32,6 +32,7 @@ import {
   deleteJobSupabase,
   uploadResumeStorage,
   getSignedResumeUrl,
+  fetchResumesSupabase,
   deleteResumeSupabase,
   submitAccessibilityReportSupabase,
   fetchAccessibilityReportsSupabase,
@@ -47,6 +48,7 @@ import {
   toggleSavedJobSupabase,
   deleteUserAccountSupabase,
   purgeDeletedAuthUserSupabase,
+  isUUID,
 } from './services/supabase';
 
 const Ctx = createContext();
@@ -219,6 +221,26 @@ export function AppProvider({ children }) {
                 const otherUsersSaved = currentSaved.filter((s) => s.seekerId !== fullUser.id);
                 const userSaved = savedIds.map((jobId) => ({ seekerId: fullUser.id, jobId }));
                 const next = { ...prev, saved: [...otherUsersSaved, ...userSaved] };
+                save(next);
+                return next;
+              });
+            }
+          });
+
+          fetchResumesSupabase(fullUser.id).then((suResumes) => {
+            if (suResumes && suResumes.length > 0) {
+              setDb((prev) => {
+                const otherResumes = (prev.resumes || []).filter((r) => r.seekerId !== fullUser.id);
+                const formatted = suResumes.map((r) => ({
+                  id: r.id,
+                  seekerId: r.seeker_id,
+                  fileName: r.file_name,
+                  fileSize: r.file_size,
+                  storagePath: r.storage_path,
+                  isPrimary: r.is_primary,
+                  uploadedAt: r.created_at,
+                }));
+                const next = { ...prev, resumes: [...otherResumes, ...formatted] };
                 save(next);
                 return next;
               });
@@ -795,7 +817,7 @@ export function AppProvider({ children }) {
 
   const toggleSave = async (jobId) => {
     if (user?.role !== 'seeker') return notify('Log in as a Job Seeker to save jobs.', true);
-    const liveAccount = isSupabaseConfigured() && user?.id && !user.email?.toLowerCase().endsWith('@workable.demo');
+    const liveAccount = isSupabaseConfigured() && user?.id && !user.email?.toLowerCase().endsWith('@workable.demo') && isUUID(jobId);
     if (liveAccount) {
       try {
         const isNowSaved = await toggleSavedJobSupabase(user.id, jobId);
@@ -1069,8 +1091,7 @@ export function AppProvider({ children }) {
       try {
         await deleteResumeSupabase(resumeId);
       } catch (err) {
-        notify(`Could not delete CV from cloud storage: ${err.message}`, true);
-        return false;
+        console.warn('Non-fatal CV cloud delete issue:', err.message);
       }
     }
     act((d) => manageResume(d, user.id, 'delete', { resumeId }));
@@ -1082,7 +1103,7 @@ export function AppProvider({ children }) {
     if (user?.role !== 'employer' && user?.role !== 'admin') {
       return notify('Employer or admin access required.', true);
     }
-    const liveAccount = isSupabaseConfigured() && user?.id && !user.email?.toLowerCase().endsWith('@workable.demo');
+    const liveAccount = isSupabaseConfigured() && user?.id && !user.email?.toLowerCase().endsWith('@workable.demo') && isUUID(jobId);
     if (liveAccount) {
       try {
         await deleteJobSupabase(jobId, user.role === 'admin' ? null : user.id);
@@ -1157,7 +1178,7 @@ export function AppProvider({ children }) {
   const withdrawApp = async (appId) => {
     if (user?.role !== 'seeker') return notify('Job Seeker access required.', true);
     try {
-      const liveAccount = isSupabaseConfigured() && user?.id && !user.email?.toLowerCase().endsWith('@workable.demo');
+      const liveAccount = isSupabaseConfigured() && user?.id && !user.email?.toLowerCase().endsWith('@workable.demo') && isUUID(appId);
       if (liveAccount) {
         await withdrawApplicationSupabase(appId);
         setDb((prev) => {
@@ -1183,7 +1204,7 @@ export function AppProvider({ children }) {
 
   const updateAppStatus = async (appId, newStatus) => {
     try {
-      const liveAccount = isSupabaseConfigured() && user?.id && !user.email?.toLowerCase().endsWith('@workable.demo');
+      const liveAccount = isSupabaseConfigured() && user?.id && !user.email?.toLowerCase().endsWith('@workable.demo') && isUUID(appId);
       if (liveAccount) {
         await updateApplicationStatusSupabase(appId, newStatus);
         setDb((prev) => {

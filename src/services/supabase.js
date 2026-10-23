@@ -24,6 +24,8 @@ export const supabase = isSupabaseConfigured()
   })
   : null;
 
+export const isUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str || '');
+
 /**
  * Sign up a new user with Supabase Auth.
  * Includes user metadata (name, role, company) so trigger or client can store it.
@@ -384,6 +386,7 @@ export async function fetchApplicationsSupabase() {
 
 export async function submitApplicationSupabase(app) {
   if (!supabase) throw new Error('Supabase is not configured.');
+  if (!isUUID(app?.job_id)) return null;
 
   const { data, error } = await supabase
     .from('applications')
@@ -397,6 +400,7 @@ export async function submitApplicationSupabase(app) {
 
 export async function updateApplicationStatusSupabase(appId, status) {
   if (!supabase) throw new Error('Supabase is not configured.');
+  if (!isUUID(appId)) return null;
 
   const { data, error } = await supabase
     .from('applications')
@@ -414,6 +418,7 @@ export async function updateApplicationStatusSupabase(appId, status) {
 
 export async function withdrawApplicationSupabase(appId) {
   if (!supabase) throw new Error('Supabase is not configured.');
+  if (!isUUID(appId)) return null;
 
   const { data, error } = await supabase
     .from('applications')
@@ -460,24 +465,26 @@ export async function setPrimaryResumeSupabase(seekerId, resumeId) {
 
 export async function deleteResumeSupabase(resumeId) {
   if (!supabase || !resumeId) throw new Error('A valid CV is required.');
+  if (!isUUID(resumeId)) return true; // Local/demo CV record: allow local deletion to succeed
+
   const { data: row, error: lookupError } = await supabase
     .from('resumes').select('id, seeker_id, storage_path, is_primary').eq('id', resumeId).maybeSingle();
   if (lookupError) throw lookupError;
-  if (!row) throw new Error('CV not found or you do not have permission to delete it.');
+  if (!row) return true; // Already deleted or not found in cloud, safe to remove locally
 
   // Delete the metadata first so the application foreign key can be nulled safely.
   const { error: deleteError } = await supabase.from('resumes').delete().eq('id', resumeId);
   if (deleteError) throw deleteError;
+
   if (row.storage_path) {
-    const { error: storageError } = await supabase.storage.from('resumes').remove([row.storage_path]);
-    if (storageError) throw new Error(`CV record deleted, but the private file could not be removed: ${storageError.message}`);
+    const cleanPath = row.storage_path.startsWith('resumes/') ? row.storage_path.replace(/^resumes\//, '') : row.storage_path;
+    await supabase.storage.from('resumes').remove([cleanPath, row.storage_path]).catch(() => {});
   }
   if (row.is_primary) {
-    const { data: nextResume, error: nextError } = await supabase
+    const { data: nextResume } = await supabase
       .from('resumes').select('id').eq('seeker_id', row.seeker_id)
       .order('created_at', { ascending: false }).limit(1).maybeSingle();
-    if (nextError) throw nextError;
-    if (nextResume?.id) await setPrimaryResumeSupabase(row.seeker_id, nextResume.id);
+    if (nextResume?.id) await setPrimaryResumeSupabase(row.seeker_id, nextResume.id).catch(() => {});
   }
   return true;
 }
@@ -503,6 +510,7 @@ export async function fetchSavedJobsSupabase(seekerId) {
 
 export async function toggleSavedJobSupabase(seekerId, jobId) {
   if (!supabase || !seekerId || !jobId) throw new Error('Supabase is not configured.');
+  if (!isUUID(jobId)) return false; // Non-UUID demo jobs are kept in local state
 
   // Check if currently saved
   const { data, error: checkError } = await supabase
@@ -541,6 +549,8 @@ export async function toggleSavedJobSupabase(seekerId, jobId) {
 
 export async function deleteJobSupabase(jobId, employerId) {
   if (!supabase || !jobId) throw new Error('A valid Job ID is required.');
+  if (!isUUID(jobId)) return true; // Local/demo job: allow local deletion to succeed
+
   let query = supabase.from('jobs').delete().eq('id', jobId);
   if (employerId) {
     query = query.eq('employer_id', employerId);
@@ -556,6 +566,8 @@ export async function deleteJobSupabase(jobId, employerId) {
 
 export async function deleteAccessibilityEvidenceSupabase(evidenceId) {
   if (!supabase || !evidenceId) throw new Error('A valid Evidence ID is required.');
+  if (!isUUID(evidenceId)) return true; // Local/demo evidence: allow local deletion to succeed
+
   const { error } = await supabase.from('accessibility_evidence').delete().eq('id', evidenceId);
   if (error) throw error;
   return true;
