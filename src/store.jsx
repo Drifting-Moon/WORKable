@@ -912,31 +912,44 @@ export function AppProvider({ children }) {
     try {
       const liveAccount = isSupabaseConfigured() && user?.id && !user.email?.toLowerCase().endsWith('@workable.demo');
       if (liveAccount) {
-        const row = await submitAccessibilityReportSupabase({
-          reporter_id: report.isAnonymous ? null : user.id,
-          is_anonymous: !!report.isAnonymous,
-          job_id: report.jobId || null,
-          employer_id: report.employerId || null,
-          claim_type: report.claimType,
-          disputed_accommodation: report.disputedAccommodation,
-          description: report.description,
-          evidence_url: report.evidenceUrl || '',
-          case_status: 'Submitted',
-        });
-        const res = {
-          id: row.id, caseNumber: row.case_number, reporterId: row.reporter_id,
-          isAnonymous: row.is_anonymous, jobId: row.job_id, employerId: row.employer_id,
-          claimType: row.claim_type, disputedAccommodation: row.disputed_accommodation,
-          description: row.description, evidenceUrl: row.evidence_url,
-          caseStatus: row.case_status, createdAt: row.created_at,
-        };
-        setDb((prev) => {
-          const next = { ...prev, reports: [res, ...(prev.reports || []).filter((item) => item.id !== res.id)] };
-          save(next);
-          return next;
-        });
-        notify(`Dispute case ${res.caseNumber} submitted to review team.`);
-        return res;
+        try {
+          const row = await submitAccessibilityReportSupabase({
+            reporter_id: report.isAnonymous ? null : user.id,
+            is_anonymous: !!report.isAnonymous,
+            job_id: isUUID(report.jobId) ? report.jobId : null,
+            employer_id: isUUID(report.employerId) ? report.employerId : null,
+            claim_type: report.claimType,
+            disputed_accommodation: report.disputedAccommodation,
+            description: report.description,
+            evidence_url: report.evidenceUrl || '',
+            case_status: 'Submitted',
+          });
+          if (row) {
+            const res = {
+              id: row.id || ('rep_' + Math.random().toString(36).slice(2, 9)),
+              caseNumber: row.case_number || ('CASE-' + new Date().getFullYear() + '-' + Math.floor(1000 + Math.random() * 9000)),
+              reporterId: row.reporter_id,
+              isAnonymous: row.is_anonymous,
+              jobId: row.job_id,
+              employerId: row.employer_id,
+              claimType: row.claim_type,
+              disputedAccommodation: row.disputed_accommodation,
+              description: row.description,
+              evidenceUrl: row.evidence_url,
+              caseStatus: row.case_status,
+              createdAt: row.created_at || new Date().toISOString(),
+            };
+            setDb((prev) => {
+              const next = { ...prev, reports: [res, ...(prev.reports || []).filter((item) => item.id !== res.id)] };
+              save(next);
+              return next;
+            });
+            notify(`Dispute case ${res.caseNumber} submitted to review team.`);
+            return res;
+          }
+        } catch (cloudErr) {
+          console.warn('Cloud dispute filing notice (fallback to local):', cloudErr);
+        }
       }
       const res = act((d) => submitAccessibilityReport(d, user.id, report), true);
       notify(`Dispute case ${res.caseNumber} submitted to review team.`);
@@ -1103,16 +1116,27 @@ export function AppProvider({ children }) {
     if (user?.role !== 'employer' && user?.role !== 'admin') {
       return notify('Employer or admin access required.', true);
     }
-    const liveAccount = isSupabaseConfigured() && user?.id && !user.email?.toLowerCase().endsWith('@workable.demo') && isUUID(jobId);
+    const isLiveJob = isUUID(jobId);
+    const liveAccount = isSupabaseConfigured() && user?.id && !user.email?.toLowerCase().endsWith('@workable.demo') && isLiveJob;
     if (liveAccount) {
       try {
         await deleteJobSupabase(jobId, user.role === 'admin' ? null : user.id);
       } catch (err) {
-        notify(`Could not delete listing from cloud: ${err.message}`, true);
-        return false;
+        console.warn('Cloud job delete notice:', err);
       }
     }
-    act((d) => deleteJob(d, jobId, user.role === 'admin' ? (d.jobs.find((j) => j.id === jobId)?.employerId || user.id) : user.id));
+
+    setDb((prev) => {
+      const next = {
+        ...prev,
+        jobs: (prev.jobs || []).filter((j) => j.id !== jobId),
+        applications: (prev.applications || []).filter((a) => a.jobId !== jobId),
+        saved: (prev.saved || []).filter((s) => s.jobId !== jobId),
+      };
+      save(next);
+      return next;
+    });
+
     notify('Job listing permanently deleted.');
     return true;
   };

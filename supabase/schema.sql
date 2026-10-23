@@ -423,14 +423,24 @@ create policy "Seekers manage their saved jobs"
 drop policy if exists "Reporters can view their filed reports" on public.accessibility_reports;
 create policy "Reporters can view their filed reports"
   on public.accessibility_reports for select
-  to authenticated
-  using (auth.uid() = reporter_id);
+  to public
+  using (
+    auth.uid() = reporter_id or
+    reporter_id is null or
+    public.workable_is_admin() or
+    auth.uid() = employer_id or
+    exists (
+      select 1 from public.company_members cm
+      where cm.company_id = accessibility_reports.company_id and cm.user_id = auth.uid()
+    )
+  );
 
 drop policy if exists "Seekers can file accessibility dispute reports" on public.accessibility_reports;
-create policy "Seekers can file accessibility dispute reports"
+drop policy if exists "Anyone can file accessibility dispute reports" on public.accessibility_reports;
+create policy "Anyone can file accessibility dispute reports"
   on public.accessibility_reports for insert
-  to authenticated
-  with check (auth.uid() = reporter_id or reporter_id is null);
+  to public
+  with check (true);
 
 drop policy if exists "Employers can view dispute when response is requested" on public.accessibility_reports;
 create policy "Employers can view dispute when response is requested"

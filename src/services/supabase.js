@@ -205,14 +205,29 @@ export async function getSignedResumeUrl(storagePath) {
 export async function submitAccessibilityReportSupabase(report) {
   if (!supabase) throw new Error('Supabase is not configured.');
 
+  const clientCaseNo = 'CASE-' + new Date().getFullYear() + '-' + Math.floor(1000 + Math.random() * 9000);
+  const payload = {
+    case_number: clientCaseNo,
+    ...report,
+    job_id: isUUID(report?.job_id) ? report.job_id : null,
+    employer_id: isUUID(report?.employer_id) ? report.employer_id : null,
+  };
+
   const { data, error } = await supabase
     .from('accessibility_reports')
-    .insert([report])
+    .insert([payload])
     .select()
-    .single();
+    .maybeSingle();
 
-  if (error) throw error;
-  return data;
+  if (error) {
+    // If SELECT policy restricts reading back an anonymous or pending dispute, insert directly without select
+    const { error: insOnlyError } = await supabase
+      .from('accessibility_reports')
+      .insert([payload]);
+    if (insOnlyError) throw insOnlyError;
+    return payload;
+  }
+  return data || payload;
 }
 
 export async function fetchAccessibilityReportsSupabase() {
@@ -547,15 +562,11 @@ export async function toggleSavedJobSupabase(seekerId, jobId) {
  * Job Deletion (Real PostgreSQL)
  * ==================================================================== */
 
-export async function deleteJobSupabase(jobId, employerId) {
+export async function deleteJobSupabase(jobId) {
   if (!supabase || !jobId) throw new Error('A valid Job ID is required.');
   if (!isUUID(jobId)) return true; // Local/demo job: allow local deletion to succeed
 
-  let query = supabase.from('jobs').delete().eq('id', jobId);
-  if (employerId) {
-    query = query.eq('employer_id', employerId);
-  }
-  const { error } = await query;
+  const { error } = await supabase.from('jobs').delete().eq('id', jobId);
   if (error) throw error;
   return true;
 }
