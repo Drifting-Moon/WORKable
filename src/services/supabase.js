@@ -16,12 +16,12 @@ export const isSupabaseConfigured = () => {
 
 export const supabase = isSupabaseConfigured()
   ? createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-      },
-    })
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  })
   : null;
 
 /**
@@ -132,14 +132,25 @@ export async function updateUserProfile(userId, updates) {
 export async function uploadResumeStorage(userId, file) {
   if (!supabase) throw new Error('Supabase is not configured.');
 
-  const filePath = `${userId}/${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
+  if (!file || !(file instanceof File)) throw new Error('Choose a CV file first.');
+  if (file.size <= 0 || file.size > 10 * 1024 * 1024) throw new Error('CV must be between 1 byte and 10 MB.');
+  const allowedTypes = new Set(['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
+  const allowedExtensions = /\.(pdf|doc|docx)$/i;
+  if (!allowedTypes.has(file.type) && !allowedExtensions.test(file.name)) throw new Error('Upload a PDF, DOC, or DOCX file.');
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(-120) || 'resume.pdf';
+  const filePath = `${userId}/${crypto.randomUUID()}_${safeName}`;
+
+  // Preserve the invariant that a seeker has a primary CV after the first upload.
+  const { data: existingPrimary, error: primaryError } = await supabase
+    .from('resumes').select('id').eq('seeker_id', userId).eq('is_primary', true).limit(1);
+  if (primaryError) throw primaryError;
 
   // 1. Upload to Supabase Storage bucket 'resumes'
-  const { data: uploadData, error: uploadError } = await supabase.storage
+  const { error: uploadError } = await supabase.storage
     .from('resumes')
     .upload(filePath, file, {
       cacheControl: '3600',
-      upsert: true,
+      upsert: false,
     });
 
   if (uploadError) {
@@ -156,14 +167,14 @@ export async function uploadResumeStorage(userId, file) {
       storage_path: filePath,
       file_size: Math.round(file.size / 1024) + ' KB',
       mime_type: file.type || 'application/pdf',
-      is_primary: false,
+      is_primary: !(existingPrimary || []).length,
     })
     .select()
     .single();
 
   if (dbError) {
     // Avoid leaving an untracked private file behind when its database row fails.
-    await supabase.storage.from('resumes').remove([filePath]).catch(() => {});
+    await supabase.storage.from('resumes').remove([filePath]).catch(() => { });
     throw new Error(`CV uploaded but its database record could not be saved: ${dbError.message}`);
   }
   if (!resumeRow) throw new Error('CV upload completed without a database record.');
@@ -431,10 +442,44 @@ export async function fetchResumesSupabase(seekerId) {
   return data || [];
 }
 
+export async function setPrimaryResumeSupabase(seekerId, resumeId) {
+  if (!supabase || !seekerId || !resumeId) throw new Error('A valid CV selection is required.');
+  const { data: selected, error: selectError } = await supabase
+    .from('resumes').select('id').eq('id', resumeId).eq('seeker_id', seekerId).maybeSingle();
+  if (selectError) throw selectError;
+  if (!selected) throw new Error('That CV does not belong to your account.');
+
+  const { error: clearError } = await supabase
+    .from('resumes').update({ is_primary: false }).eq('seeker_id', seekerId);
+  if (clearError) throw clearError;
+  const { error: setError } = await supabase
+    .from('resumes').update({ is_primary: true }).eq('id', resumeId).eq('seeker_id', seekerId);
+  if (setError) throw setError;
+  return true;
+}
+
 export async function deleteResumeSupabase(resumeId) {
-  if (!supabase) return;
-  const { error } = await supabase.from('resumes').delete().eq('id', resumeId);
-  if (error) throw error;
+  if (!supabase || !resumeId) throw new Error('A valid CV is required.');
+  const { data: row, error: lookupError } = await supabase
+    .from('resumes').select('id, seeker_id, storage_path, is_primary').eq('id', resumeId).maybeSingle();
+  if (lookupError) throw lookupError;
+  if (!row) throw new Error('CV not found or you do not have permission to delete it.');
+
+  // Delete the metadata first so the application foreign key can be nulled safely.
+  const { error: deleteError } = await supabase.from('resumes').delete().eq('id', resumeId);
+  if (deleteError) throw deleteError;
+  if (row.storage_path) {
+    const { error: storageError } = await supabase.storage.from('resumes').remove([row.storage_path]);
+    if (storageError) throw new Error(`CV record deleted, but the private file could not be removed: ${storageError.message}`);
+  }
+  if (row.is_primary) {
+    const { data: nextResume, error: nextError } = await supabase
+      .from('resumes').select('id').eq('seeker_id', row.seeker_id)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (nextError) throw nextError;
+    if (nextResume?.id) await setPrimaryResumeSupabase(row.seeker_id, nextResume.id);
+  }
+  return true;
 }
 
 /* ====================================================================

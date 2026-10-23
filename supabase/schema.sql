@@ -187,6 +187,14 @@ alter table public.accessibility_reports enable row level security;
 alter table public.audit_logs enable row level security;
 alter table public.tags enable row level security;
 
+-- Admin check is centralized and uses a fixed search_path for security-definer calls.
+create or replace function public.workable_is_admin()
+returns boolean language sql stable security definer
+set search_path = public, pg_temp
+as $$
+  select exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin' and coalesce(p.suspended, false) = false);
+$$;
+
 -- ====================================================================
 -- 4. CREATE RLS POLICIES (All tables exist, safe to cross-reference)
 -- ====================================================================
@@ -198,6 +206,34 @@ create policy "Users can view own profile"
   on public.profiles for select
   to authenticated
   using (auth.uid() = id);
+
+drop policy if exists "Admins can view all profiles" on public.profiles;
+create policy "Admins can view all profiles"
+  on public.profiles for select to authenticated
+  using (public.workable_is_admin());
+
+drop policy if exists "Admins can update profiles" on public.profiles;
+create policy "Admins can update profiles"
+  on public.profiles for update to authenticated
+  using (public.workable_is_admin())
+  with check (public.workable_is_admin());
+
+drop policy if exists "Employers can view applicants for their jobs" on public.profiles;
+create policy "Employers can view applicants for their jobs"
+  on public.profiles for select
+  to authenticated
+  using (
+    exists (
+      select 1 from public.applications a
+      join public.jobs j on j.id = a.job_id
+      where a.seeker_id = profiles.id
+        and (j.employer_id = auth.uid() or exists (
+          select 1 from public.company_members cm
+          where cm.company_id = j.company_id and cm.user_id = auth.uid()
+            and cm.role in ('owner', 'admin', 'recruiter')
+        ))
+    )
+  );
 
 drop policy if exists "Users can insert their own profile" on public.profiles;
 create policy "Users can insert their own profile"
@@ -269,6 +305,12 @@ create policy "Company members can update company profile"
     )
   );
 
+drop policy if exists "Admins can moderate companies" on public.companies;
+create policy "Admins can moderate companies"
+  on public.companies for all to authenticated
+  using (public.workable_is_admin())
+  with check (public.workable_is_admin());
+
 -- COMPANY MEMBERS
 drop policy if exists "Company members can view their team" on public.company_members;
 create policy "Company members can view their team"
@@ -305,6 +347,12 @@ create policy "Employers can submit and update their evidence"
     )
   );
 
+drop policy if exists "Admins can review accessibility evidence" on public.accessibility_evidence;
+create policy "Admins can review accessibility evidence"
+  on public.accessibility_evidence for all to authenticated
+  using (public.workable_is_admin())
+  with check (public.workable_is_admin());
+
 -- JOBS
 drop policy if exists "Anyone can read published non-suspended jobs" on public.jobs;
 create policy "Anyone can read published non-suspended jobs"
@@ -316,13 +364,27 @@ create policy "Employers can manage their jobs"
   on public.jobs for all
   to authenticated
   using (
-    auth.uid() = employer_id or
-    exists (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'employer' and coalesce(p.suspended, false) = false)
+    and (auth.uid() = employer_id or exists (
       select 1 from public.company_members cm
-      where cm.company_id = jobs.company_id
-      and cm.user_id = auth.uid()
-    )
+      where cm.company_id = jobs.company_id and cm.user_id = auth.uid()
+        and cm.role in ('owner', 'admin', 'recruiter')
+    ))
+  )
+  with check (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'employer' and coalesce(p.suspended, false) = false)
+    and (auth.uid() = employer_id or exists (
+      select 1 from public.company_members cm
+      where cm.company_id = jobs.company_id and cm.user_id = auth.uid()
+        and cm.role in ('owner', 'admin', 'recruiter')
+    ))
   );
+
+drop policy if exists "Admins can moderate jobs" on public.jobs;
+create policy "Admins can moderate jobs"
+  on public.jobs for all to authenticated
+  using (public.workable_is_admin())
+  with check (public.workable_is_admin());
 
 -- RESUMES
 drop policy if exists "Seekers manage their own resumes" on public.resumes;
@@ -443,24 +505,15 @@ drop policy if exists "Admins have full access to reports" on public.accessibili
 create policy "Admins have full access to reports"
   on public.accessibility_reports for all
   to authenticated
-  using (
-    exists (
-      select 1 from public.profiles p
-      where p.id = auth.uid() and p.role = 'admin'
-    )
-  );
+  using (public.workable_is_admin())
+  with check (public.workable_is_admin());
 
 -- AUDIT LOGS
 drop policy if exists "Admins can view audit logs" on public.audit_logs;
 create policy "Admins can view audit logs"
   on public.audit_logs for select
   to authenticated
-  using (
-    exists (
-      select 1 from public.profiles p
-      where p.id = auth.uid() and p.role = 'admin'
-    )
-  );
+  using (public.workable_is_admin());
 
 -- TAGS
 drop policy if exists "Public read tags" on public.tags;
@@ -620,3 +673,189 @@ drop trigger if exists trigger_log_report_status on public.accessibility_reports
 create trigger trigger_log_report_status
   after update on public.accessibility_reports
   for each row execute procedure public.log_report_status_change();
+
+
+-- ====================================================================
+-- 7. TRUST / MODERATION GUARDS (defense in depth beyond RLS)
+-- ====================================================================
+-- Employers can declare accessibility, but cannot self-certify evidence or identity.
+create or replace function public.guard_company_moderation_fields()
+returns trigger language plpgsql set search_path = public, pg_temp as $$
+begin
+  if current_user in ('postgres', 'supabase_admin', 'service_role') or public.workable_is_admin() then return new; end if;
+  if tg_op = 'INSERT' then
+    new.identity_verified := false;
+    new.verification_status := 'Unverified';
+  elsif new.identity_verified is distinct from old.identity_verified
+    or new.verification_status is distinct from old.verification_status then
+    raise exception 'Only an administrator can change company identity verification.';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists guard_company_moderation_fields on public.companies;
+create trigger guard_company_moderation_fields before insert or update on public.companies
+for each row execute procedure public.guard_company_moderation_fields();
+
+create or replace function public.guard_accessibility_evidence_moderation()
+returns trigger language plpgsql set search_path = public, pg_temp as $$
+begin
+  if current_user in ('postgres', 'supabase_admin', 'service_role') or public.workable_is_admin() then return new; end if;
+  if tg_op = 'INSERT' then
+    new.verification_status := 'Self-Reported';
+    new.verified_by := null;
+    new.verified_at := null;
+    new.reviewer_notes := '';
+  elsif new.verification_status is distinct from old.verification_status
+    or new.verified_by is distinct from old.verified_by
+    or new.verified_at is distinct from old.verified_at
+    or new.reviewer_notes is distinct from old.reviewer_notes then
+    raise exception 'Only an administrator can review or certify accessibility evidence.';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists guard_accessibility_evidence_moderation on public.accessibility_evidence;
+create trigger guard_accessibility_evidence_moderation before insert or update on public.accessibility_evidence
+for each row execute procedure public.guard_accessibility_evidence_moderation();
+
+-- Never trust client-supplied report workflow status or moderation decisions.
+create or replace function public.guard_accessibility_report_fields()
+returns trigger language plpgsql set search_path = public, pg_temp as $$
+declare job_owner uuid; job_company uuid;
+begin
+  if tg_op = 'INSERT' then
+    if auth.uid() is not null then
+      if new.is_anonymous then new.reporter_id := null; else new.reporter_id := auth.uid(); end if;
+    end if;
+    if new.job_id is not null then
+      select j.employer_id, j.company_id into job_owner, job_company from public.jobs j where j.id = new.job_id;
+      if job_owner is null then raise exception 'The referenced job does not exist.'; end if;
+      if new.employer_id is not null and new.employer_id <> job_owner then raise exception 'Reported employer does not match selected job.'; end if;
+      new.employer_id := job_owner;
+      new.company_id := job_company;
+    end if;
+    new.case_status := 'Submitted';
+    new.employer_response := '';
+    new.employer_responded_at := null;
+    new.admin_notes := 'Initial report received. Awaiting case officer intake.';
+    new.resolution_action := 'none';
+    return new;
+  end if;
+  if current_user in ('postgres', 'supabase_admin', 'service_role') or public.workable_is_admin() then return new; end if;
+  if new.employer_id = auth.uid() and old.case_status = 'Employer Response Requested'
+    and new.employer_response is distinct from old.employer_response then
+    if new.case_number is distinct from old.case_number
+      or new.reporter_id is distinct from old.reporter_id
+      or new.is_anonymous is distinct from old.is_anonymous
+      or new.job_id is distinct from old.job_id
+      or new.company_id is distinct from old.company_id
+      or new.claim_type is distinct from old.claim_type
+      or new.disputed_accommodation is distinct from old.disputed_accommodation
+      or new.incident_date is distinct from old.incident_date
+      or new.description is distinct from old.description
+      or new.admin_notes is distinct from old.admin_notes
+      or new.resolution_action is distinct from old.resolution_action
+      or new.case_status not in ('Employer Response Requested', 'Under Review') then
+      raise exception 'Employers may only submit a response to an assigned inquiry.';
+    end if;
+    return new;
+  end if;
+  raise exception 'Only an administrator or the assigned employer may update this report.';
+end;
+$$;
+drop trigger if exists guard_accessibility_report_fields on public.accessibility_reports;
+create trigger guard_accessibility_report_fields before insert or update on public.accessibility_reports
+for each row execute procedure public.guard_accessibility_report_fields();
+
+-- Applications must target a live job and may only reference the seeker's own CV.
+create or replace function public.guard_application_insert()
+returns trigger language plpgsql set search_path = public, pg_temp as $$
+declare job_active boolean; job_status text;
+begin
+  if not exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'seeker' and coalesce(p.suspended, false) = false)
+    or new.seeker_id <> auth.uid() then
+    raise exception 'Only an active job seeker may apply.';
+  end if;
+  select j.active, j.status into job_active, job_status from public.jobs j where j.id = new.job_id;
+  if coalesce(job_active, false) = false or job_status <> 'Published' then
+    raise exception 'This job is no longer accepting applications.';
+  end if;
+  if new.resume_id is not null and not exists (select 1 from public.resumes r where r.id = new.resume_id and r.seeker_id = auth.uid()) then
+    raise exception 'You can only attach your own CV.';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists guard_application_insert on public.applications;
+create trigger guard_application_insert before insert on public.applications
+for each row execute procedure public.guard_application_insert();
+
+-- Prevent a user from changing their own role, suspension state, or auth email
+-- through a broad profile UPDATE. Profile content remains editable by its owner.
+create or replace function public.guard_profile_privileged_fields()
+returns trigger language plpgsql set search_path = public, pg_temp as $$
+begin
+  if current_user in ('postgres', 'supabase_admin', 'service_role') or public.workable_is_admin() then
+    return new;
+  end if;
+  if tg_op = 'INSERT' then
+    if new.role = 'admin' then raise exception 'Administrator accounts cannot be self-created.'; end if;
+    new.suspended := false;
+    return new;
+  end if;
+  if new.role is distinct from old.role
+    or new.suspended is distinct from old.suspended
+    or new.email is distinct from old.email then
+    raise exception 'Role, suspension state, and account email are managed by authorized account operations.';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists guard_profile_privileged_fields on public.profiles;
+create trigger guard_profile_privileged_fields before insert or update on public.profiles
+for each row execute procedure public.guard_profile_privileged_fields();
+
+-- Keep application identity and applicant-provided content immutable after submission.
+-- Employers may change only the status/timestamp; seekers may only withdraw their own application.
+create or replace function public.guard_application_update()
+returns trigger language plpgsql set search_path = public, pg_temp as $$
+declare is_admin boolean := false; is_owner_employer boolean := false;
+begin
+  is_admin := current_user in ('postgres', 'supabase_admin', 'service_role') or public.workable_is_admin();
+  if is_admin then return new; end if;
+
+  if new.seeker_id is distinct from old.seeker_id
+    or new.job_id is distinct from old.job_id
+    or new.resume_id is distinct from old.resume_id
+    or new.cover is distinct from old.cover
+    or new.resume is distinct from old.resume
+    or new.applied_at is distinct from old.applied_at then
+    raise exception 'Application details cannot be edited after submission.';
+  end if;
+
+  if auth.uid() = old.seeker_id then
+    if new.status <> 'Withdrawn' then raise exception 'Job seekers may only withdraw their own applications.'; end if;
+    return new;
+  end if;
+
+  select exists (
+    select 1 from public.jobs j
+    where j.id = old.job_id and (
+      j.employer_id = auth.uid() or exists (
+        select 1 from public.company_members cm
+        where cm.company_id = j.company_id and cm.user_id = auth.uid()
+          and cm.role in ('owner', 'admin', 'recruiter')
+      )
+    )
+  ) into is_owner_employer;
+  if not is_owner_employer then raise exception 'You cannot update this application.'; end if;
+  if new.status not in ('Applied', 'Under Review', 'Interview', 'Hired', 'Rejected', 'Withdrawn') then
+    raise exception 'Invalid application status.';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists guard_application_update on public.applications;
+create trigger guard_application_update before update on public.applications
+for each row execute procedure public.guard_application_update();

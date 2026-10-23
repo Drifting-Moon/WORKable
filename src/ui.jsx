@@ -23,7 +23,7 @@ export const cx = (...a) => a.filter(Boolean).join(' ');
 
 const V = {
   primary: 'bg-brand text-white hover:bg-brand-d active:translate-y-px shadow-xs',
-  ghost: 'border border-line bg-white/95 text-ink hover:bg-soft hover:border-muted/30 active:translate-y-px',
+  ghost: 'border border-line bg-surface text-ink hover:bg-soft hover:border-muted/30 active:translate-y-px',
   subtle: 'bg-soft text-ink hover:bg-line/40 active:translate-y-px',
   accent: 'bg-accent text-white hover:brightness-95 active:translate-y-px shadow-xs',
   danger: 'bg-bad text-white hover:opacity-90 active:translate-y-px',
@@ -47,7 +47,7 @@ export function Btn({ v = 'primary', as: As = 'button', className, ...p }) {
 export const Card = ({ as: As = 'div', className, ...p }) => (
   <As
     className={cx(
-      'rounded-xl border border-line bg-white/95 p-6 shadow-[0_1px_3px_rgba(15,23,42,0.04)] hover:border-slate-300 transition-all duration-200',
+      'rounded-xl border border-line bg-surface p-6 shadow-[0_1px_3px_rgba(15,23,42,0.04)] hover:border-slate-300 transition-all duration-200',
       className
     )}
     {...p}
